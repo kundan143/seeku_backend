@@ -1,0 +1,21 @@
+const ROOT_BASE_URL_MASTERS = '/api/masters';
+
+module.exports = async (app, jwt) => {
+	app.use(ROOT_BASE_URL_MASTERS + '/usersMaster', jwt, require('../masters/usersMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/designationMaster', jwt, require('../masters/designationMasterAPI'));
+    app.use(ROOT_BASE_URL_MASTERS + '/countryMaster', jwt,require('../masters/countryMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/stateMaster', jwt, require('../masters/stateMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/cityMaster', jwt, require('../masters/cityMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/departmentMaster', jwt, require('../masters/departmentMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/wireCableTypeMaster', jwt, require('../masters/wireCableTypesMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/cableCategoryMaster', jwt, require('../masters/cableCategoryMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/cableStageMaster', jwt, require('../masters/cableStageMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/unitTypeMaster', jwt, require('../masters/unitTypeMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/materialMaster', jwt, require('../masters/materialMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/paymentTermMaster', jwt, require('../masters/paymentTermMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/itemMaster', jwt, require('../masters/itemMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/relationMaster', jwt, require('../masters/relationMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/bankMaster', jwt, require('../masters/bankMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/leaveTypeMaster', jwt, require('../masters/leaveTypeMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/expenseTypeMaster', jwt, require('../masters/expenseTypeMasterAPI'));
+};

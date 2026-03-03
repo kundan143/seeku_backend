@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 60
+    },
+    "auditLog": "/Users/Kundan Kumar/seeku software solutions/seeku-soft/seeku_final/seeku-backend/dailylog/.ec6ddf1e0ce607062fb4d1d9ff3c6f669a71bda4-audit.json",
+    "files": [
+        {
+            "date": 1757058125057,
+            "name": "/Users/Kundan Kumar/seeku software solutions/seeku-soft/seeku_final/seeku-backend/dailylog/logger-odc-2025-09-05.log",
+            "hash": "7e3783461d4c62fefa15d3868303d263bcd25b01b6d57d60bf9e7ff97803dac9"
+        }
+    ],
+    "hashType": "sha256"
+}

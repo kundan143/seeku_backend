@@ -1,0 +1,20 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 60
+    },
+    "auditLog": "/Users/Kundan Kumar/seeku software solutions/seeku-soft/seeku_final/seeku-backend/src/dailylog/.145048dde8273b7666e9febf05bf5f45bc6e4fe4-audit.json",
+    "files": [
+        {
+            "date": 1757080887184,
+            "name": "/Users/Kundan Kumar/seeku software solutions/seeku-soft/seeku_final/seeku-backend/src/dailylog/logger-odc-2025-09-05.log",
+            "hash": "2ac93252c851b3bb373bdb920f8d50902cb662c9fdfb7b1473c69e15697c2216"
+        },
+        {
+            "date": 1757159082167,
+            "name": "/Users/Kundan Kumar/seeku software solutions/seeku-soft/seeku_final/seeku-backend/src/dailylog/logger-odc-2025-09-06.log",
+            "hash": "5e36fdd32579af4fb1f7ade7c25e3312046bbf2976d45ca3190b368373114643"
+        }
+    ],
+    "hashType": "sha256"
+}
