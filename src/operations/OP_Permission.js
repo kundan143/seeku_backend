@@ -2,12 +2,12 @@ const { menuPermission } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 // const { sendNotification } = require("../services/notificationService");
 const { sequelize } = require("../config/database-connection");
-const { Op, QueryTypes } = require("sequelize");
+const { Op, QueryTypes, col } = require("sequelize");
 
 exports.addData = async function (body) {
   try {
-    var result = await menuPermission.create(body.data);
-    responseCodes.SUCCESS.data = result.id;
+    var result = await menuPermission.bulkCreate(body.permissions);
+    responseCodes.SUCCESS.data = result;
     responseCodes.SUCCESS.message = "Row Added Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
