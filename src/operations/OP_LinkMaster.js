@@ -54,7 +54,7 @@ exports.deleteData = async function (body) {
 
 exports.getAllData = async function () {
 	try {
-		let query = `SELECT lm.id, lm.link_name,mm.menu_name
+		let query = `SELECT lm.id, lm.link_name,mm.menu_name, mm.id as menu_id
 						FROM link_master lm
 						LEFT JOIN menu_master mm ON lm.menu_id = mm.id
 						ORDER BY parent_rank ASC, child_rank ASC`;
