@@ -136,13 +136,12 @@ exports.deleteData = async function (body) {
 
 exports.getPermissions = async function (body) {
     try {
-      const menuQuery = `SELECT  mm.id, mm.parent_id, mm.menu_name, mm.parent_id, 
-                        mm.child_rank,mp.user_id,mp.menu_id,mp.add_opt,mp.edit_opt, mp.delete_opt, 
-                        mp.view_opt, mp.designation_id, mp.is_active
+      const menuQuery = `SELECT  mm.id, mm.parent_id, mm.menu_name,
+                        mm.child_rank,mp.user_id,mp.add_opt,mp.edit_opt, mp.delete_opt, 
+                        mp.view_opt, mp.designation_id, mp.is_active, mm.id as menu_id
                         FROM menu_master mm
                         LEFT JOIN menu_permission mp ON mp.menu_id = mm.id
-                        WHERE ((mp.is_active = 1 OR mp.is_active IS NULL)
-                        AND (mp.user_id = ${body.emp_id} OR mp.user_id IS NULL))
+                        WHERE (mp.user_id = ${body.emp_id} OR mp.user_id IS NULL)
                         ORDER BY mm.menu_name ASC;`
         // const menuQuery = ` SELECT * FROM menu_permission  mp
         //                     LEFT JOIN menu_master AS mm ON mm.id = mp.menu_id
