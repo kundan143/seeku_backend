@@ -25,6 +25,15 @@ m.relationMaster = require("../relation_master")(sequelize, DataTypes);
 m.bankMaster = require("../bank_master")(sequelize, DataTypes);
 m.leaveTypeMaster = require("../leave_type_master")(sequelize, DataTypes);
 m.expenseTypeMaster = require("../expense_type_master")(sequelize, DataTypes);
+m.classMaster = require("../class_master")(sequelize, DataTypes);
+m.sectionMaster = require("../section_master")(sequelize, DataTypes);
+m.studentMaster = require("../student_master")(sequelize, DataTypes);
+m.studentParentsMaster = require("../student_parents_master")(sequelize, DataTypes);
+m.studentDocument = require("../student_document")(sequelize, DataTypes);
+m.emailMaster = require("../email_master")(sequelize, DataTypes);
+m.mobileMaster = require("../mobile_master")(sequelize, DataTypes);
+m.addressMaster = require("../address_master")(sequelize, DataTypes);
+m.academicMaster = require("../academic_master")(sequelize, DataTypes);
 
 // Relations
 // m.usersMaster.belongsTo(dt.roleMaster, { foreignKey: 'role_id' });
@@ -93,6 +102,48 @@ m.leaveTypeMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 
 m.expenseTypeMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.expenseTypeMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
 m.expenseTypeMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.classMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.classMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.classMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.sectionMaster.belongsTo(m.classMaster, { foreignKey: 'class_id' });
+m.sectionMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.sectionMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.sectionMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.studentMaster.belongsTo(m.countryMaster, { foreignKey: 'nationality_id' });
+m.studentMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.studentMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.studentMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.studentParentsMaster.belongsTo(m.studentMaster, { foreignKey: 'st_id' });
+m.studentParentsMaster.belongsTo(m.relationMaster, { foreignKey: 'relation_id' });
+m.studentParentsMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.studentParentsMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.studentParentsMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.studentDocument.belongsTo(m.studentMaster, { foreignKey: 'st_id' });
+m.studentDocument.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.studentDocument.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.studentDocument.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.emailMaster.belongsTo(m.usersMaster, { foreignKey: 'emp_id' });
+m.emailMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.emailMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.emailMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.mobileMaster.belongsTo(m.usersMaster, { foreignKey: 'emp_id' });
+m.mobileMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.mobileMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.mobileMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.addressMaster.belongsTo(m.usersMaster, { foreignKey: 'emp_id' });
+m.addressMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.addressMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.addressMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+
 
 
 module.exports = m;

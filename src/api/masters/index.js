@@ -18,4 +18,13 @@ module.exports = async (app, jwt) => {
 	app.use(ROOT_BASE_URL_MASTERS + '/bankMaster', jwt, require('../masters/bankMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/leaveTypeMaster', jwt, require('../masters/leaveTypeMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/expenseTypeMaster', jwt, require('../masters/expenseTypeMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/classMaster', jwt, require('../masters/classMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/sectionMaster', jwt, require('../masters/sectionMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/studentMaster', jwt, require('../masters/studentMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/studentParentsMaster', jwt, require('../masters/studentParentsMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/studentDocument', jwt, require('../masters/studentDocumentAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/emailMaster', jwt, require('../masters/emailMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/mobileMaster', jwt, require('../masters/mobileMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/addressMaster', jwt, require('../masters/addressMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/academicMaster', jwt, require('../masters/academicMasterAPI'));
 };
