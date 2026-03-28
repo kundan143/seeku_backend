@@ -1,4 +1,4 @@
-const { sectionMaster } = require("../models");
+const { subjectMaster } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 // const { sendNotification } = require("../services/notificationService");
 const { sequelize } = require("../config/database-connection");
@@ -6,7 +6,7 @@ const { Op, QueryTypes } = require("sequelize");
 
 exports.addData = async function (body) {
   try {
-    var result = await sectionMaster.create(body.data);
+    var result = await subjectMaster.create(body.data);
     responseCodes.SUCCESS.data = result.id;
     responseCodes.SUCCESS.message = "Row Added Successfully";
     return responseCodes.SUCCESS;
@@ -19,7 +19,7 @@ exports.addData = async function (body) {
 
 exports.updateData = async function (body) {
   try {
-    await sectionMaster.update(body.data, {
+    await subjectMaster.update(body.data, {
       where: {
         id: body.id,
       },
@@ -36,7 +36,7 @@ exports.updateData = async function (body) {
 
 exports.deleteData = async function (body) {
   try {
-    await sectionMaster.update(body.data, {
+    await subjectMaster.update(body.data, {
       where: {
         id: body.id,
       },
@@ -54,7 +54,7 @@ exports.deleteData = async function (body) {
 exports.getAllData = async function () {
   try {
     var query = `select sm.*,cm.class_code , cm.class_name
-                  from section_master sm
+                  from subject_master sm
                   join class_master cm on cm.id = sm.class_id
                   where sm.is_active = 1
                   order by sm.id asc`;
@@ -73,7 +73,7 @@ exports.getOneData = async function (id) {
   try {
     const { Op } = require("sequelize");
 
-    var data = await sectionMaster.findAll({
+    var data = await subjectMaster.findAll({
       where: {
         id: id,
         is_active: {

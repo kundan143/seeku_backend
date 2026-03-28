@@ -60,6 +60,165 @@ COMMENT ON COLUMN section_master.modified_date IS 'Timestamp when this record wa
 COMMENT ON COLUMN section_master.deleted_by    IS 'ID of the user who soft-deleted this record';
 COMMENT ON COLUMN section_master.deleted_date  IS 'Timestamp when this record was soft-deleted';
 
+CREATE TABLE public.subject_master (
+    id                  SERIAL PRIMARY KEY,
+    subject_name        VARCHAR(100) NOT NULL,
+    subject_code        VARCHAR(50),
+    subject_type        VARCHAR(50),
+    class_id            INTEGER REFERENCES public.class_master(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    section_id          INTEGER REFERENCES public.section_master(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    description         TEXT,
+    is_active           INTEGER DEFAULT 1,
+    created_by          INTEGER      NOT NULL,
+    created_date        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    modified_by         INTEGER,
+    modified_date       TIMESTAMP,
+    deleted_by          INTEGER,
+    deleted_date        TIMESTAMP,
+    CONSTRAINT fk_email_created  FOREIGN KEY (created_by)  REFERENCES users_master(id),
+    CONSTRAINT fk_email_modified FOREIGN KEY (modified_by) REFERENCES users_master(id),
+    CONSTRAINT fk_email_deleted  FOREIGN KEY (deleted_by)  REFERENCES users_master(id)
+);
+
+-- Table comment
+COMMENT ON TABLE public.subject_master IS 'Stores subject information linked to class and section';
+
+-- Column comments
+COMMENT ON COLUMN public.subject_master.id            IS 'Primary key, auto-incremented unique identifier for each subject';
+COMMENT ON COLUMN public.subject_master.subject_name  IS 'Name of the subject (e.g. Mathematics, Science, English)';
+COMMENT ON COLUMN public.subject_master.subject_code  IS 'Short unique code for the subject (e.g. MATH101, SCI101)';
+COMMENT ON COLUMN public.subject_master.subject_type  IS 'Type of subject - e.g. Core, Elective, Optional, Extra Curricular';
+COMMENT ON COLUMN public.subject_master.class_id      IS 'Foreign key referencing class_master(id) - class to which subject belongs';
+COMMENT ON COLUMN public.subject_master.section_id    IS 'Foreign key referencing section_master(id) - section to which subject belongs';
+COMMENT ON COLUMN public.subject_master.description   IS 'Optional detailed description about the subject';
+COMMENT ON COLUMN public.subject_master.is_active     IS '1 = Active, 0 = Inactive, 2 = Deleted (soft delete flag)';
+COMMENT ON COLUMN public.subject_master.created_by    IS 'User ID of the person who created this record';
+COMMENT ON COLUMN public.subject_master.created_date  IS 'Timestamp when the record was created, defaults to current time';
+COMMENT ON COLUMN public.subject_master.modified_by   IS 'User ID of the person who last modified this record';
+COMMENT ON COLUMN public.subject_master.modified_date IS 'Timestamp when the record was last modified';
+COMMENT ON COLUMN public.subject_master.deleted_by    IS 'User ID of the person who soft-deleted this record';
+COMMENT ON COLUMN public.subject_master.deleted_date  IS 'Timestamp when the record was soft-deleted';
+
+INSERT INTO public.subject_master (subject_name, subject_code, subject_type, class_id, is_active, created_by, created_date)
+VALUES
+
+-- Class I (class_id = 1)
+('English',              'ENG-I',       'Core',     1, 1, 1, NOW()),
+('Hindi',                'HIN-I',       'Core',     1, 1, 1, NOW()),
+('Mathematics',          'MATH-I',      'Core',     1, 1, 1, NOW()),
+('Environmental Studies','EVS-I',       'Core',     1, 1, 1, NOW()),
+('General Knowledge',    'GK-I',        'Optional', 1, 1, 1, NOW()),
+('Drawing & Craft',      'DRAW-I',      'Extra Curricular', 1, 1, 1, NOW()),
+
+-- Class II (class_id = 2)
+('English',              'ENG-II',      'Core',     2, 1, 1, NOW()),
+('Hindi',                'HIN-II',      'Core',     2, 1, 1, NOW()),
+('Mathematics',          'MATH-II',     'Core',     2, 1, 1, NOW()),
+('Environmental Studies','EVS-II',      'Core',     2, 1, 1, NOW()),
+('General Knowledge',    'GK-II',       'Optional', 2, 1, 1, NOW()),
+('Drawing & Craft',      'DRAW-II',     'Extra Curricular', 2, 1, 1, NOW()),
+
+-- Class III (class_id = 3)
+('English',              'ENG-III',     'Core',     3, 1, 1, NOW()),
+('Hindi',                'HIN-III',     'Core',     3, 1, 1, NOW()),
+('Mathematics',          'MATH-III',    'Core',     3, 1, 1, NOW()),
+('Environmental Studies','EVS-III',     'Core',     3, 1, 1, NOW()),
+('General Knowledge',    'GK-III',      'Optional', 3, 1, 1, NOW()),
+('Drawing & Craft',      'DRAW-III',    'Extra Curricular', 3, 1, 1, NOW()),
+
+-- Class IV (class_id = 4)
+('English',              'ENG-IV',      'Core',     4, 1, 1, NOW()),
+('Hindi',                'HIN-IV',      'Core',     4, 1, 1, NOW()),
+('Mathematics',          'MATH-IV',     'Core',     4, 1, 1, NOW()),
+('Environmental Studies','EVS-IV',      'Core',     4, 1, 1, NOW()),
+('General Knowledge',    'GK-IV',       'Optional', 4, 1, 1, NOW()),
+('Drawing & Craft',      'DRAW-IV',     'Extra Curricular', 4, 1, 1, NOW()),
+
+-- Class V (class_id = 5)
+('English',              'ENG-V',       'Core',     5, 1, 1, NOW()),
+('Hindi',                'HIN-V',       'Core',     5, 1, 1, NOW()),
+('Mathematics',          'MATH-V',      'Core',     5, 1, 1, NOW()),
+('Environmental Studies','EVS-V',       'Core',     5, 1, 1, NOW()),
+('General Knowledge',    'GK-V',        'Optional', 5, 1, 1, NOW()),
+('Drawing & Craft',      'DRAW-V',      'Extra Curricular', 5, 1, 1, NOW()),
+
+-- Class VI (class_id = 6)
+('English',              'ENG-VI',      'Core',     6, 1, 1, NOW()),
+('Hindi',                'HIN-VI',      'Core',     6, 1, 1, NOW()),
+('Mathematics',          'MATH-VI',     'Core',     6, 1, 1, NOW()),
+('Science',              'SCI-VI',      'Core',     6, 1, 1, NOW()),
+('Social Science',       'SST-VI',      'Core',     6, 1, 1, NOW()),
+('Sanskrit',             'SAN-VI',      'Optional', 6, 1, 1, NOW()),
+('General Knowledge',    'GK-VI',       'Optional', 6, 1, 1, NOW()),
+('Drawing & Craft',      'DRAW-VI',     'Extra Curricular', 6, 1, 1, NOW()),
+
+-- Class VII (class_id = 7)
+('English',              'ENG-VII',     'Core',     7, 1, 1, NOW()),
+('Hindi',                'HIN-VII',     'Core',     7, 1, 1, NOW()),
+('Mathematics',          'MATH-VII',    'Core',     7, 1, 1, NOW()),
+('Science',              'SCI-VII',     'Core',     7, 1, 1, NOW()),
+('Social Science',       'SST-VII',     'Core',     7, 1, 1, NOW()),
+('Sanskrit',             'SAN-VII',     'Optional', 7, 1, 1, NOW()),
+('General Knowledge',    'GK-VII',      'Optional', 7, 1, 1, NOW()),
+('Drawing & Craft',      'DRAW-VII',    'Extra Curricular', 7, 1, 1, NOW()),
+
+-- Class VIII (class_id = 8)
+('English',              'ENG-VIII',    'Core',     8, 1, 1, NOW()),
+('Hindi',                'HIN-VIII',    'Core',     8, 1, 1, NOW()),
+('Mathematics',          'MATH-VIII',   'Core',     8, 1, 1, NOW()),
+('Science',              'SCI-VIII',    'Core',     8, 1, 1, NOW()),
+('Social Science',       'SST-VIII',    'Core',     8, 1, 1, NOW()),
+('Sanskrit',             'SAN-VIII',    'Optional', 8, 1, 1, NOW()),
+('General Knowledge',    'GK-VIII',     'Optional', 8, 1, 1, NOW()),
+('Drawing & Craft',      'DRAW-VIII',   'Extra Curricular', 8, 1, 1, NOW()),
+
+-- Class IX (class_id = 9)
+('English',              'ENG-IX',      'Core',     9, 1, 1, NOW()),
+('Hindi',                'HIN-IX',      'Core',     9, 1, 1, NOW()),
+('Mathematics',          'MATH-IX',     'Core',     9, 1, 1, NOW()),
+('Science',              'SCI-IX',      'Core',     9, 1, 1, NOW()),
+('Social Science',       'SST-IX',      'Core',     9, 1, 1, NOW()),
+('Sanskrit',             'SAN-IX',      'Optional', 9, 1, 1, NOW()),
+('Information Technology','IT-IX',      'Elective', 9, 1, 1, NOW()),
+('General Knowledge',    'GK-IX',       'Optional', 9, 1, 1, NOW()),
+
+-- Class X (class_id = 10)
+('English',              'ENG-X',       'Core',     10, 1, 1, NOW()),
+('Hindi',                'HIN-X',       'Core',     10, 1, 1, NOW()),
+('Mathematics',          'MATH-X',      'Core',     10, 1, 1, NOW()),
+('Science',              'SCI-X',       'Core',     10, 1, 1, NOW()),
+('Social Science',       'SST-X',       'Core',     10, 1, 1, NOW()),
+('Sanskrit',             'SAN-X',       'Optional', 10, 1, 1, NOW()),
+('Information Technology','IT-X',       'Elective', 10, 1, 1, NOW()),
+('General Knowledge',    'GK-X',        'Optional', 10, 1, 1, NOW()),
+
+-- Class XI (class_id = 11)
+('English',              'ENG-XI',      'Core',     11, 1, 1, NOW()),
+('Physics',              'PHY-XI',      'Core',     11, 1, 1, NOW()),
+('Chemistry',            'CHEM-XI',     'Core',     11, 1, 1, NOW()),
+('Mathematics',          'MATH-XI',     'Core',     11, 1, 1, NOW()),
+('Biology',              'BIO-XI',      'Elective', 11, 1, 1, NOW()),
+('Computer Science',     'CS-XI',       'Elective', 11, 1, 1, NOW()),
+('Accountancy',          'ACC-XI',      'Elective', 11, 1, 1, NOW()),
+('Business Studies',     'BS-XI',       'Elective', 11, 1, 1, NOW()),
+('Economics',            'ECO-XI',      'Elective', 11, 1, 1, NOW()),
+('History',              'HIS-XI',      'Elective', 11, 1, 1, NOW()),
+('Geography',            'GEO-XI',      'Elective', 11, 1, 1, NOW()),
+('Physical Education',   'PE-XI',       'Extra Curricular', 11, 1, 1, NOW()),
+
+-- Class XII (class_id = 12)
+('English',              'ENG-XII',     'Core',     12, 1, 1, NOW()),
+('Physics',              'PHY-XII',     'Core',     12, 1, 1, NOW()),
+('Chemistry',            'CHEM-XII',    'Core',     12, 1, 1, NOW()),
+('Mathematics',          'MATH-XII',    'Core',     12, 1, 1, NOW()),
+('Biology',              'BIO-XII',     'Elective', 12, 1, 1, NOW()),
+('Computer Science',     'CS-XII',      'Elective', 12, 1, 1, NOW()),
+('Accountancy',          'ACC-XII',     'Elective', 12, 1, 1, NOW()),
+('Business Studies',     'BS-XII',      'Elective', 12, 1, 1, NOW()),
+('Economics',            'ECO-XII',     'Elective', 12, 1, 1, NOW()),
+('History',              'HIS-XII',     'Elective', 12, 1, 1, NOW()),
+('Geography',            'GEO-XII',     'Elective', 12, 1, 1, NOW()),
+('Physical Education',   'PE-XII',      'Extra Curricular', 12, 1, 1, NOW());
 
 CREATE TABLE student_master (
     id             SERIAL       PRIMARY KEY,
