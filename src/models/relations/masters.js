@@ -35,6 +35,7 @@ m.mobileMaster = require("../mobile_master")(sequelize, DataTypes);
 m.addressMaster = require("../address_master")(sequelize, DataTypes);
 m.academicMaster = require("../academic_master")(sequelize, DataTypes);
 m.subjectMaster = require("../subject_master")(sequelize, DataTypes);
+m.feeTypeMaster = require("../fee_type_master")(sequelize, DataTypes);
 
 // Relations
 // m.usersMaster.belongsTo(dt.roleMaster, { foreignKey: 'role_id' });
@@ -148,6 +149,11 @@ m.addressMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'd
 m.subjectMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.subjectMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
 m.subjectMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+
+m.feeTypeMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.feeTypeMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.feeTypeMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
 
 
 

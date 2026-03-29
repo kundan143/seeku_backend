@@ -28,4 +28,5 @@ module.exports = async (app, jwt) => {
 	app.use(ROOT_BASE_URL_MASTERS + '/addressMaster', jwt, require('../masters/addressMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/academicMaster', jwt, require('../masters/academicMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/subjectMaster', jwt, require('../masters/subjectMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/feeTypeMaster', jwt, require('../masters/feeTypeMasterAPI'));
 };

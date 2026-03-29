@@ -33,6 +33,7 @@ const startServer = async () => {
   require("./api/hr")(app, jwtTokenValiadtion);
   require("./api/design-costing")(app, jwtTokenValiadtion);
   require("./api/sales")(app, jwtTokenValiadtion);
+  require("./api/fee-management")(app, jwtTokenValiadtion);
 
   app.use((req, res, next) => {
     const logData = {
