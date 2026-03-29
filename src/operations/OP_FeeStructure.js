@@ -73,11 +73,12 @@ exports.getAllData = async function () {
 
 exports.getOneData = async function (id) {
   try {
-    var query = `select fs.*, cm.class_name, ftm.fee_type_name, ftm.description  from fee_structure as fs
-join class_master cm on cm.id = fs.class_id
-join fee_type_master ftm on ftm.id = fs.fee_type_id
-where fs.is_active = 1
-order by fs.id desc;`;
+    var query = `select fs.*, cm.class_name, ftm.fee_type_name
+    from fee_structure as fs
+    join class_master cm on cm.id = fs.class_id
+    join fee_type_master ftm on ftm.id = fs.fee_type_id
+    where fs.is_active = 1
+    order by fs.id desc;`;
     var data = await sequelize.query(query, { type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
