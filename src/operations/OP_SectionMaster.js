@@ -90,3 +90,26 @@ exports.getOneData = async function (id) {
     return responseCodes.BAD_REQUEST;
   }
 };
+
+exports.getSectionByClass = async function (classId) {
+  try {
+    const { Op } = require("sequelize");
+
+    var data = await sectionMaster.findAll({
+      where: {
+        class_id: classId,
+        is_active: {
+          [Op.ne]: 2, // not equal to 2
+        },
+      },
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    console.log(e);
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};

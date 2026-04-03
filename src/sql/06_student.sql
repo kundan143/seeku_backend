@@ -391,7 +391,7 @@ CREATE TABLE academic_master (
     class_id        INT          NOT NULL,
     section_id      INT          NOT NULL,
     roll_no         VARCHAR(20),
-    academic_year   INT          NOT NULL,
+    academic_year   VARCHAR(9)          NOT NULL,
     previous_school VARCHAR(255),
     is_active       SMALLINT     DEFAULT 1,
     created_by      INTEGER      NOT NULL,

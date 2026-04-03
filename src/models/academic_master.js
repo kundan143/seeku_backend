@@ -25,7 +25,7 @@ module.exports = function (sequelize, DataTypes) {
       references: { model: "section_master", key: "id" },
     },
     roll_no: { type: DataTypes.STRING(255), allowNull: true },
-    academic_year: { type: DataTypes.INTEGER, allowNull: false },
+    academic_year: { type: DataTypes.STRING(9), allowNull: false },
     previous_school: { type: DataTypes.STRING(255), allowNull: true },
     is_active: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 1 },
     created_by: {
