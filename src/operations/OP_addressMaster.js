@@ -51,10 +51,11 @@ exports.deleteData = async function (body) {
   }
 };
 
-exports.getAllData = async function () {
+exports.getAllData = async function (body) {
   try {
     var data = await addressMaster.findAll({
       where: {
+        st_id: body.st_id,
         is_active: {
           [Op.ne]: 2, // not equal to 2
         },

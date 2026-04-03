@@ -28,4 +28,9 @@ router.post("/getOneRow", async (req, res, next) => {
   return res.send(await OP_SectionMaster.getOneData(req.body.id));
 });
 
+router.post("/getSectionByClass", async (req, res, next) => {
+  console.log(req.body);
+  return res.send(await OP_SectionMaster.getSectionByClass(req.body.class_id));
+});
+
 module.exports = router;

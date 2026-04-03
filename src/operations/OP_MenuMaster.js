@@ -17,20 +17,23 @@ exports.addData = async function (body) {
 
 		userData.forEach(userElement => {
 			menu_permissions_arr.push({
-				role_id: 1,
+				designation_id: 1,
 				menu_id: result.id,
 				add_opt: 1,
 				edit_opt: 1,
 				view_opt: 1,
 				delete_opt: 1,
-				user_id: userElement.id
+				user_id: userElement.id,
+				is_active: 1,
+				created_by: userElement.created_by,
+				created_date: userElement.created_date,
 			})
 		});
 
 		await menuPermission.bulkCreate(menu_permissions_arr);
 
 		// addActivityLog(menuPermission.tableName, result.id, body, "ADD");
-		responseCodes.SUCCESS.data = result.id;
+		responseCodes.SUCCESS.data = null;
 		responseCodes.SUCCESS.message = "Row Added Successfully";
 		return responseCodes.SUCCESS;
 	} catch (e) {

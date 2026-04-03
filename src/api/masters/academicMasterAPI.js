@@ -4,8 +4,8 @@ const express = require("express");
 const router = express.Router();
 
 // 1 = Get All Rows
-router.get("/getAllRows", async (req, res, next) => {
-  return res.send(await OP_academicMaster.getAllData());
+router.post("/getAllRows", async (req, res, next) => {
+  return res.send(await OP_academicMaster.getAllData(req.body));
 });
 
 // 2 = Add Row

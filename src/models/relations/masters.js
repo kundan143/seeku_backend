@@ -114,7 +114,6 @@ m.sectionMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'c
 m.sectionMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
 m.sectionMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
 
-m.studentMaster.belongsTo(m.countryMaster, { foreignKey: 'nationality_id' });
 m.studentMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.studentMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
 m.studentMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
