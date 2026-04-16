@@ -33,5 +33,20 @@ router.post('/getDatasheetDetails', async (req, res, next) => {
     return res.send(await OP_productionDatasheet.getDatasheetDetails(req.body.rel_so_id));
 });
 
+router.post('/addStages', async (req, res) => {
+  return res.send(await OP_productionDatasheet.addStages(req.body));
+});
+
+router.post('/getStages', async (req, res) => {
+  return res.send(await OP_productionDatasheet.getStages(req.body.rel_so_id));
+});
+
+router.post('/approveDatasheet', async (req, res) => {
+  return res.send(await OP_productionDatasheet.approveDatasheet(req.body));
+});
+
+router.post('/rejectDatasheet', async (req, res) => {
+  return res.send(await OP_productionDatasheet.rejectDatasheet(req.body));
+});
 
 module.exports = router;

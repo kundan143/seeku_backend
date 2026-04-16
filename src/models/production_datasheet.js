@@ -7,15 +7,15 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       primaryKey: true,
     },
-    datasheet_name: {
-      type: DataTypes.STRING(255),
+    quantity : {
+      type: DataTypes.DOUBLE,
       allowNull: false,
     },
-    org_id: {
+    item_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "organizations_master",
+        model: "item_master",
         key: "id",
       },
     },
@@ -42,12 +42,16 @@ module.exports = function (sequelize, DataTypes) {
     status: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: 0,
     },
     is_deleted: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: 0,
+      defaultValue: 1,
+    },
+    is_active: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 1,
     },
     created_by: {
       type: DataTypes.INTEGER,

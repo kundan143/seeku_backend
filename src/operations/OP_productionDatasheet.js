@@ -36,7 +36,7 @@ exports.updateData = async function (body) {
 
 exports.deleteData = async function (body) {
   try {
-    await productionDatasheet.destroy({
+    await productionDatasheet.update(body.data, {
       where: {
         id: body.id,
       },
@@ -53,44 +53,20 @@ exports.deleteData = async function (body) {
 
 exports.getAllData = async function () {
   try {
-    let query = `	select pi.details AS pairing_details, ci.details AS conductor_details, ii.details AS insulation_details, so.id as so_id,rsoi.id as rel_so_id, so.booking_date, so.current_financial_year,ccm.category_name,
-                    om.org_name as buyer_name, so.buyer_address, ptm.payment_term  , cm."name" as city_name,
-                    concat(um.first_name,' ', um.last_name) as kam_name,rsoi.rate, rsoi.amount,
-                    concat(um2.first_name,' ', um2.last_name) as crm_name,so.wire_cable_type_id,
-                    wctm.cable_type, so.remarks, im.item_name, rsoi.quantity, utm.uom_name
-                    from sales_order so
-                    join rel_sales_order_items rsoi on rsoi.so_id = so.id
-                    join item_master im on im.id = rsoi.item_id
-                    join organizations_master om on om.id = so.org_id
-                    join payment_term_master ptm on ptm.id = so.payment_term_id
-                    join city_master cm on cm.id = so.delivery_city_id
-                    join users_master um on um.id = so.sales_person_id
-                    join users_master um2 on um2.id = so.crm_person_id
-                    join wire_cable_types_master wctm on wctm.id = so.wire_cable_type_id
-                    join cable_category_master ccm on ccm.id = wctm.id
-                    join unit_type_master utm on utm.id = rsoi.uom_id
-                    LEFT JOIN (
-                        SELECT json_agg(row_to_json(t)) AS details, rel_so_id
-                        FROM conductor_information t
-                        GROUP BY rel_so_id
-                    ) ci ON ci.rel_so_id = rsoi.id
-                    LEFT JOIN (
-                        SELECT json_agg(row_to_json(t)) AS details, rel_so_id
-                        FROM insulation_information t
-                        GROUP BY rel_so_id
-                    ) ii ON ii.rel_so_id = rsoi.id
-                    LEFT JOIN (
-                        SELECT json_agg(row_to_json(t)) AS details, rel_so_id
-                        FROM pairing_information t
-                        GROUP BY rel_so_id
-                    ) pi ON pi.rel_so_id = rsoi.id
-                    order by so.id desc;`;
+    let query = `	select ccm.category_name, wctm.cable_type,im.item_name,
+                  concat(um.first_name,' ', um.last_name) as created_by, pd.* 
+                  from production_datasheet pd 
+                  join cable_category_master ccm on ccm.id = pd.cable_category_id 
+                  join wire_cable_types_master wctm on wctm.id = pd.wire_cable_type_id 
+                  join item_master im on im.id = pd.item_id 
+                  join users_master um on um.id = pd.created_by 
+                  where pd.is_active = 1 
+                  order by pd.id desc;`;
     let data = await sequelize.query(query, { type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -143,6 +119,91 @@ exports.getDatasheetDetails = async function (rel_so_id) {
     console.log(e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+exports.addStages = async function (body) {
+  try {
+    const { production_datasheet_id, stages, status } = body;
+
+    // 🔥 Delete old
+    await sequelize.query(`
+      DELETE FROM production_datasheet_stages 
+      WHERE production_datasheet_id = ${production_datasheet_id}
+    `);
+
+    // 🔥 Insert new
+    for (let stage of stages) {
+      await sequelize.query(`
+        INSERT INTO production_datasheet_stages 
+        (production_datasheet_id, stage_id, order_no)
+        VALUES (${production_datasheet_id}, ${stage.stage_id}, ${stage.order_no})
+      `);
+    }
+
+    // ✅ ONLY update status if all stages selected
+    if (status === 0) {
+      await sequelize.query(`
+        UPDATE production_datasheet
+        SET status = 0
+        WHERE id = ${production_datasheet_id}
+      `);
+    }
+
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+exports.getStages = async function (production_datasheet_id) {
+  try {
+    const data = await sequelize.query(`
+      SELECT stage_id, order_no 
+      FROM production_datasheet_stages 
+      WHERE production_datasheet_id = ${production_datasheet_id}
+      ORDER BY order_no
+    `, { type: QueryTypes.SELECT });
+
+    responseCodes.SUCCESS.data = data;
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+exports.approveDatasheet = async function (body) {
+  try {
+    await productionDatasheet.update(
+      {
+        status: 1,
+        approved_date: new Date(),
+      },
+      {
+        where: { id: body.production_datasheet_id },
+      },
+    );
+
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+exports.rejectDatasheet = async function (body) {
+  try {
+    await productionDatasheet.update(
+      {
+        status: 2,
+      },
+      {
+        where: { id: body.production_datasheet_id },
+      },
+    );
+
+    return responseCodes.SUCCESS;
+  } catch (e) {
     return responseCodes.BAD_REQUEST;
   }
 };
