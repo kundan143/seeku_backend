@@ -16,6 +16,7 @@ dc.braidingInformation = require("../braiding_information")(sequelize, DataTypes
 dc.innerSheathingInformation = require("../inner_sheathing_information")(sequelize, DataTypes);
 dc.outerSheathingInformation = require("../outer_sheathing_information")(sequelize, DataTypes);
 dc.laidUpInformation = require("../laid_up_information")(sequelize, DataTypes);
+dc.productionDatasheetStages = require("../production_datasheet_stages")(sequelize, DataTypes);
 
 // RELATIONSHIPS
 
@@ -88,12 +89,19 @@ dc.pairingInformation.belongsTo(m.usersMaster, { foreignKey: "approved_by" });
 
 
 
-dc.productionDatasheet.belongsTo(o.organizationsMaster, { foreignKey: "org_id" });
+dc.productionDatasheet.belongsTo(m.itemMaster, { foreignKey: "item_id" });
 dc.productionDatasheet.belongsTo(m.cableCategoryMaster, { foreignKey: "cable_category_id" });
 dc.productionDatasheet.belongsTo(m.wireCableTypesMaster, { foreignKey: "wire_cable_type_id" });
 dc.productionDatasheet.belongsTo(m.usersMaster, { foreignKey: "created_by" });
 dc.productionDatasheet.belongsTo(m.usersMaster, { foreignKey: "modified_by" });
 dc.productionDatasheet.belongsTo(m.usersMaster, { foreignKey: "deleted_by" });
 dc.productionDatasheet.belongsTo(m.usersMaster, { foreignKey: "approved_by" });
+
+
+dc.productionDatasheetStages.belongsTo(dc.productionDatasheet, { foreignKey: "datasheet_id" });
+dc.productionDatasheetStages.belongsTo(m.cableStageMaster, { foreignKey: "stage_id" });
+dc.productionDatasheetStages.belongsTo(m.usersMaster, { foreignKey: "created_by" });
+dc.productionDatasheetStages.belongsTo(m.usersMaster, { foreignKey: "modified_by" });
+dc.productionDatasheetStages.belongsTo(m.usersMaster, { foreignKey: "deleted_by" });
 
 module.exports = dc;
