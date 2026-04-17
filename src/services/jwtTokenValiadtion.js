@@ -16,11 +16,9 @@ const jwtTokenValiadtion = async function (req, res, next) {
       decoded.userDet[0].id
     ) {
       req.headers.userId = decoded.userDet[0].id;
-      console.log("Middleware : Valid token access granted");
       logger.info("Middleware : Valid token access granted");
       next();
     } else {
-      console.log("Middleware : Invalid token, access Denied");
       logger.info("Middleware : Invalid token, access Denied");
       res.send({
         message: "danger",
@@ -29,7 +27,6 @@ const jwtTokenValiadtion = async function (req, res, next) {
       });
     }
   } catch (err) {
-    console.log("Middleware : Invalid token, unable to decode");
     logger.info("Middleware : Invalid token, unable to decode");
     res.send({
       message: "danger",

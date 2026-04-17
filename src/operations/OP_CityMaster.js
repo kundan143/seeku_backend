@@ -115,7 +115,7 @@ exports.searchCity = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-	console.log(e)
+	
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to search city";
     return responseCodes.BAD_REQUEST;

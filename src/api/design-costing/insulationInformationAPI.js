@@ -31,7 +31,7 @@ router.post('/getOneRow', async (req, res, next) => {
 });
 // 5 = Get One Row
 router.post('/getOneRowByDatasheet', async (req, res, next) => {
-    return res.send(await OP_insulationInformation.getOneRowByDatasheet(req.body.rel_so_id));
+    return res.send(await OP_insulationInformation.getOneRowByDatasheet(req.body.pd_id));
 });
 
 

@@ -43,6 +43,11 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    is_stage:{
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+    },
     is_deleted: {
       type: DataTypes.INTEGER,
       allowNull: true,

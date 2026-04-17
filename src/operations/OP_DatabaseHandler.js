@@ -42,7 +42,7 @@ exports.getAllTables = async function () {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -158,22 +158,6 @@ exports.createModel = async function (body) {
       return Object.assign(result, current);
     }, {});
 
-    // for (const [k, v] of Object.entries(obj)) {
-    // 	var json = JSON.stringify(v);
-    // 	var value = json.replace(/"([^"]+)":/g, '$1:');
-    // 	// stream.write(k + ":");
-    // 	let obj1 = value.replaceAll('"', '');
-
-    // 	let obj2 = obj1.replaceAll(',', ',\n');
-
-    // 	let obj4 = obj3.replaceAll(key, new_key);
-
-    // 	console.log(obj4, "ALEX");
-
-    // 	let final_obj = null;
-
-    // }
-
     var model_file_name = table_name;
     var model_file_path = "./src/models/" + model_file_name + ".js";
     var stream = fs.createWriteStream(model_file_path);
@@ -234,7 +218,7 @@ exports.createModel = async function (body) {
     responseCodes.SUCCESS.message = "Model Created Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -254,7 +238,7 @@ exports.getOneTableDetails = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;

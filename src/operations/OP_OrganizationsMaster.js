@@ -35,7 +35,7 @@ exports.addData = async function (body) {
     responseCodes.SUCCESS.message = "Row Added Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Row";
     return responseCodes.BAD_REQUEST;
@@ -62,7 +62,7 @@ exports.updateData = async function (body) {
     responseCodes.SUCCESS.message = "Row Updated Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Row";
     return responseCodes.BAD_REQUEST;
@@ -81,7 +81,6 @@ exports.deleteData = async function (body) {
     responseCodes.SUCCESS.message = "Row Deleted Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log("aaaaa", e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Delete Row";
     return responseCodes.BAD_REQUEST;
@@ -241,7 +240,7 @@ exports.getCategoryWiseOrgAllDetailsForIndent = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -295,7 +294,7 @@ exports.getCategoryWiseOrgAllDetails = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -355,7 +354,7 @@ exports.getStatusWiseOrgList = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -374,7 +373,7 @@ exports.updateOrgStatus = async function (body) {
     responseCodes.SUCCESS.message = "Row Updated Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Row";
     return responseCodes.BAD_REQUEST;
@@ -425,7 +424,7 @@ exports.getZoneWiseBuyers = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -443,7 +442,7 @@ exports.updateIndentStatus = async function (body) {
     responseCodes.SUCCESS.message = "Row Updated Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Row";
     return responseCodes.BAD_REQUEST;

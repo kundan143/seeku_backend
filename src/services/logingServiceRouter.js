@@ -116,7 +116,7 @@ routers.post("/user_login", async (req, res) => {
       return res.status(400).send(responseCodes.BAD_REQUEST);
     }
   } catch (e) {
-    console.log(e)
+    
     logger.error(`Unexpected error: ${e.message}`);
     return res.status(500).send(responseCodes.INTERNAL_SERVER_ERROR);
   }
@@ -155,12 +155,10 @@ routers.post("/register", async (req, res) => {
       // let db_password = "Kundan@8383"
       // const salt = bcrypt.genSaltSync(12);
       // const hash = bcrypt.hashSync(db_password, salt);
-      // console.log(hash);
       // Save hash to DB
 
       // Login
       // const resBcrypt = await bcrypt.compare(password, hash);
-      // console.log(resBcrypt);
       // Use await for bcrypt.compare
       // Save email and hash to DB (example, adjust for your ORM)
       await usersMaster.create({

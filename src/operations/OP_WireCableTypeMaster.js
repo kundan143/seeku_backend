@@ -67,7 +67,7 @@ exports.getAllData = async function () {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -98,14 +98,15 @@ exports.getOneData = async function (id) {
     return responseCodes.BAD_REQUEST;
   }
 };
-exports.getDataUsingCableCategory = async function (cat_id) {
+exports.getDataUsingCableCategory = async function (body) {
   try {
     let query = `SELECT wctm.id, ccm.category_name, wctm.cable_type, wctm.description,
                     CONCAT(um.first_name,' ', um.last_name) AS name, wctm.cable_category_id
                     FROM wire_cable_types_master wctm
                     JOIN cable_category_master ccm ON ccm.id = wctm.cable_category_id
                     JOIN users_master um ON um.id = wctm.created_by
-                    WHERE wctm.cable_category_id = ${cat_id}
+                    WHERE wctm.cable_category_id = ${body.cable_category_id}
+                    AND wctm.is_active = ${body.is_active}
                     ORDER BY wctm.id ASC;`;
     let data = await sequelize.query(query, { type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = data;

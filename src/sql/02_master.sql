@@ -789,7 +789,7 @@ COMMENT ON COLUMN public.production_datasheet.deleted_date IS 'Timestamp when th
 CREATE TABLE public.conductor_information (
     id BIGSERIAL PRIMARY KEY,
     conductor_material_id INTEGER REFERENCES material_master(id),
-    rel_so_id INTEGER REFERENCES sales_order(id),
+    pd_id INTEGER NOT NULL REFERENCES production_datasheet(id),
     no_of_cores NUMERIC(10,3) NOT NULL,
     strands_per_core NUMERIC(10,3) NOT NULL,
     size_per_strands NUMERIC(10,3) NOT NULL,
@@ -832,7 +832,7 @@ CREATE INDEX idx_conductor_created_by ON conductor_information(created_by);
 -- =============================
 CREATE TABLE public.insulation_information (
     id BIGSERIAL PRIMARY KEY,
-    rel_so_id INTEGER REFERENCES sales_order(id),
+    pd_id INTEGER NOT NULL REFERENCES production_datasheet(id),
     insulation_material_id INTEGER NOT NULL REFERENCES material_master(id),
     color VARCHAR(100) NOT NULL,
     thichkess_nom NUMERIC(10,3) NOT NULL,
@@ -874,7 +874,7 @@ CREATE INDEX idx_insulation_created_by ON insulation_information(created_by);
 -- =============================
 CREATE TABLE public.pairing_information (
     id BIGSERIAL PRIMARY KEY,
-    rel_so_id INTEGER REFERENCES sales_order(id),
+    pd_id INTEGER NOT NULL REFERENCES production_datasheet(id),
     pairing_color VARCHAR(100) NOT NULL,
     pairing_lay NUMERIC(10,3) NOT NULL,
     pairing_lay_tolerance NUMERIC(10,3) NOT NULL,
@@ -906,7 +906,7 @@ CREATE INDEX idx_pairing_created_by ON pairing_information(created_by);
 
 CREATE TABLE braiding_information (
     id SERIAL PRIMARY KEY,
-    rel_so_id INTEGER NOT NULL REFERENCES rel_sales_order_items(id),
+    pd_id INTEGER NOT NULL REFERENCES production_datasheet(id),
     polyester_tape TEXT NOT NULL,
     almyar_tape TEXT NOT NULL,
     material_id INTEGER NOT NULL REFERENCES material_master(id),
@@ -930,7 +930,7 @@ CREATE TABLE braiding_information (
 
 COMMENT ON TABLE braiding_information IS 'Stores braiding related information for cable production.';
 COMMENT ON COLUMN braiding_information.id IS 'Primary key for braiding information';
-COMMENT ON COLUMN braiding_information.rel_so_id IS 'Reference to the related sales order item';
+COMMENT ON COLUMN braiding_information.pd_id IS 'Reference to the related sales order item';
 COMMENT ON COLUMN braiding_information.polyester_tape IS 'Type of polyester tape used';
 COMMENT ON COLUMN braiding_information.almyar_tape IS 'Type of almyar tape used';
 COMMENT ON COLUMN braiding_information.material_id IS 'Material used for braiding';
@@ -951,7 +951,7 @@ COMMENT ON COLUMN braiding_information.approved_date IS 'Timestamp of approval';
 COMMENT ON COLUMN braiding_information.deleted_by IS 'User ID who deleted the record';
 COMMENT ON COLUMN braiding_information.deleted_date IS 'Timestamp of deletion';
 
-CREATE INDEX idx_braiding_rel_so_id ON braiding_information(rel_so_id);
+CREATE INDEX idx_braiding_pd_id ON braiding_information(pd_id);
 CREATE INDEX idx_braiding_material_id ON braiding_information(material_id);
 CREATE INDEX idx_braiding_drain_material_id ON braiding_information(drain_wire_material_id);
 CREATE INDEX idx_braiding_status ON braiding_information(status);
@@ -959,7 +959,7 @@ CREATE INDEX idx_braiding_is_deleted ON braiding_information(is_deleted);
 -- =============================
 CREATE TABLE armoring_information (
     id SERIAL PRIMARY KEY,
-    rel_so_id INTEGER NOT NULL REFERENCES rel_sales_order_items(id),
+    pd_id INTEGER NOT NULL REFERENCES production_datasheet(id),
     armoring_material_id INTEGER NOT NULL REFERENCES material_master(id),
     size_of_wire_strips DOUBLE PRECISION NOT NULL,
     number_of_wire_strips DOUBLE PRECISION NOT NULL,
@@ -980,7 +980,7 @@ CREATE TABLE armoring_information (
 
 COMMENT ON TABLE armoring_information IS 'Stores details of the armoring layer.';
 COMMENT ON COLUMN armoring_information.id IS 'Primary key for armoring information';
-COMMENT ON COLUMN armoring_information.rel_so_id IS 'Reference to the related sales order item';
+COMMENT ON COLUMN armoring_information.pd_id IS 'Reference to the related sales order item';
 COMMENT ON COLUMN armoring_information.armoring_material_id IS 'Material used for armoring';
 COMMENT ON COLUMN armoring_information.size_of_wire_strips IS 'Size of wire strips used in armoring';
 COMMENT ON COLUMN armoring_information.number_of_wire_strips IS 'Number of wire strips used';
@@ -998,14 +998,14 @@ COMMENT ON COLUMN armoring_information.approved_date IS 'Timestamp of approval';
 COMMENT ON COLUMN armoring_information.deleted_by IS 'User who deleted the record';
 COMMENT ON COLUMN armoring_information.deleted_date IS 'Timestamp of deletion';
 
-CREATE INDEX idx_armoring_rel_so_id ON armoring_information(rel_so_id);
+CREATE INDEX idx_armoring_pd_id ON armoring_information(pd_id);
 CREATE INDEX idx_armoring_material_id ON armoring_information(armoring_material_id);
 CREATE INDEX idx_armoring_status ON armoring_information(status);
 CREATE INDEX idx_armoring_is_deleted ON armoring_information(is_deleted);
 -- =============================
 CREATE TABLE inner_sheathing_information (
     id SERIAL PRIMARY KEY,
-    rel_so_id INTEGER NOT NULL REFERENCES rel_sales_order_items(id),
+    pd_id INTEGER NOT NULL REFERENCES production_datasheet(id),
     material_id INTEGER NOT NULL REFERENCES material_master(id),
     color TEXT NOT NULL,
     min_thickness DOUBLE PRECISION NOT NULL,
@@ -1026,7 +1026,7 @@ CREATE TABLE inner_sheathing_information (
 
 COMMENT ON TABLE inner_sheathing_information IS 'Details of the inner sheathing layer of the cable.';
 COMMENT ON COLUMN inner_sheathing_information.id IS 'Primary key';
-COMMENT ON COLUMN inner_sheathing_information.rel_so_id IS 'Reference to the related sales order item';
+COMMENT ON COLUMN inner_sheathing_information.pd_id IS 'Reference to the related sales order item';
 COMMENT ON COLUMN inner_sheathing_information.material_id IS 'Material used for inner sheathing';
 COMMENT ON COLUMN inner_sheathing_information.color IS 'Color of the inner sheath';
 COMMENT ON COLUMN inner_sheathing_information.min_thickness IS 'Minimum thickness of the layer';
@@ -1044,14 +1044,14 @@ COMMENT ON COLUMN inner_sheathing_information.approved_date IS 'Timestamp of app
 COMMENT ON COLUMN inner_sheathing_information.deleted_by IS 'User who deleted';
 COMMENT ON COLUMN inner_sheathing_information.deleted_date IS 'Timestamp of deletion';
 
-CREATE INDEX idx_inner_sheathing_rel_so_id ON inner_sheathing_information(rel_so_id);
+CREATE INDEX idx_inner_sheathing_pd_id ON inner_sheathing_information(pd_id);
 CREATE INDEX idx_inner_sheathing_material_id ON inner_sheathing_information(material_id);
 CREATE INDEX idx_inner_sheathing_status ON inner_sheathing_information(status);
 CREATE INDEX idx_inner_sheathing_is_deleted ON inner_sheathing_information(is_deleted);
 -- =============================
 CREATE TABLE outer_sheathing_information (
     id SERIAL PRIMARY KEY,
-    rel_so_id INTEGER NOT NULL REFERENCES rel_sales_order_items(id),
+    pd_id INTEGER NOT NULL REFERENCES production_datasheet(id),
     material_id INTEGER NOT NULL REFERENCES material_master(id),
     color TEXT NOT NULL,
     min_thickness DOUBLE PRECISION NOT NULL,
@@ -1075,7 +1075,7 @@ CREATE TABLE outer_sheathing_information (
 
 COMMENT ON TABLE outer_sheathing_information IS 'Details of the outer sheathing layer of the cable.';
 COMMENT ON COLUMN outer_sheathing_information.id IS 'Primary key';
-COMMENT ON COLUMN outer_sheathing_information.rel_so_id IS 'Reference to the related sales order item';
+COMMENT ON COLUMN outer_sheathing_information.pd_id IS 'Reference to the related sales order item';
 COMMENT ON COLUMN outer_sheathing_information.material_id IS 'Material used for outer sheathing';
 COMMENT ON COLUMN outer_sheathing_information.color IS 'Color of the outer sheath';
 COMMENT ON COLUMN outer_sheathing_information.min_thickness IS 'Minimum thickness';
@@ -1096,14 +1096,14 @@ COMMENT ON COLUMN outer_sheathing_information.approved_date IS 'Timestamp of app
 COMMENT ON COLUMN outer_sheathing_information.deleted_by IS 'User who deleted';
 COMMENT ON COLUMN outer_sheathing_information.deleted_date IS 'Timestamp of deletion';
 
-CREATE INDEX idx_outer_sheathing_rel_so_id ON outer_sheathing_information(rel_so_id);
+CREATE INDEX idx_outer_sheathing_pd_id ON outer_sheathing_information(pd_id);
 CREATE INDEX idx_outer_sheathing_material_id ON outer_sheathing_information(material_id);
 CREATE INDEX idx_outer_sheathing_status ON outer_sheathing_information(status);
 CREATE INDEX idx_outer_sheathing_is_deleted ON outer_sheathing_information(is_deleted);
 -- =============================
 CREATE TABLE laid_up_information (
     id SERIAL PRIMARY KEY,
-    rel_so_id INTEGER NOT NULL REFERENCES rel_sales_order_items(id),
+    pd_id INTEGER NOT NULL REFERENCES production_datasheet(id),
     laid_up_dia DOUBLE PRECISION NOT NULL,
     binder_tape TEXT NOT NULL,
     color_sequence TEXT NOT NULL,
@@ -1125,7 +1125,7 @@ CREATE TABLE laid_up_information (
 
 COMMENT ON TABLE laid_up_information IS 'Stores laid-up stage information of the cable.';
 COMMENT ON COLUMN laid_up_information.id IS 'Primary key';
-COMMENT ON COLUMN laid_up_information.rel_so_id IS 'Reference to the related sales order item';
+COMMENT ON COLUMN laid_up_information.pd_id IS 'Reference to the related sales order item';
 COMMENT ON COLUMN laid_up_information.laid_up_dia IS 'Diameter after laid-up stage';
 COMMENT ON COLUMN laid_up_information.binder_tape IS 'Type of binder tape used';
 COMMENT ON COLUMN laid_up_information.color_sequence IS 'Color sequence used in laid-up';
@@ -1144,7 +1144,7 @@ COMMENT ON COLUMN laid_up_information.approved_date IS 'Timestamp of approval';
 COMMENT ON COLUMN laid_up_information.deleted_by IS 'User who deleted';
 COMMENT ON COLUMN laid_up_information.deleted_date IS 'Timestamp of deletion';
 
-CREATE INDEX idx_laid_up_rel_so_id ON laid_up_information(rel_so_id);
+CREATE INDEX idx_laid_up_pd_id ON laid_up_information(pd_id);
 CREATE INDEX idx_laid_up_status ON laid_up_information(status);
 CREATE INDEX idx_laid_up_is_deleted ON laid_up_information(is_deleted);
 

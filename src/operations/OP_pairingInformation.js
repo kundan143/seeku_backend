@@ -84,11 +84,11 @@ exports.getOneData = async function (id) {
         return responseCodes.BAD_REQUEST;
     }
 };
-exports.getOneRowByDatasheet = async function (rel_so_id) {
+exports.getOneRowByDatasheet = async function (pd_id) {
     try {
         var data = await pairingInformation.findAll({
             where: {
-                rel_so_id: rel_so_id,
+                pd_id: pd_id,
                 status: 1
             }
         });

@@ -36,4 +36,8 @@ router.post('/getWireCableType', async (req, res, next) => {
     return res.send(await OP_cableCategoryMaster.getWireCableType(req.body.WireCableType_id));
 });
 
+router.get('/getActiveData', async (req, res, next) => {
+    return res.send(await OP_cableCategoryMaster.getActiveData());
+});
+
 module.exports = router;

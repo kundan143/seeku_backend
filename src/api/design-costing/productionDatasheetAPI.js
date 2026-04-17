@@ -27,10 +27,10 @@ router.post('/deleteRow', async (req, res, next) => {
 
 // 5 = Get One Row
 router.post('/getOneRow', async (req, res, next) => {
-    return res.send(await OP_productionDatasheet.getOneData(req.body.rel_so_id));
+    return res.send(await OP_productionDatasheet.getOneData(req.body.pd_id));
 });
 router.post('/getDatasheetDetails', async (req, res, next) => {
-    return res.send(await OP_productionDatasheet.getDatasheetDetails(req.body.rel_so_id));
+    return res.send(await OP_productionDatasheet.getDatasheetDetails(req.body.pd_id));
 });
 
 router.post('/addStages', async (req, res) => {
@@ -38,7 +38,7 @@ router.post('/addStages', async (req, res) => {
 });
 
 router.post('/getStages', async (req, res) => {
-  return res.send(await OP_productionDatasheet.getStages(req.body.rel_so_id));
+  return res.send(await OP_productionDatasheet.getStages(req.body.pd_id));
 });
 
 router.post('/approveDatasheet', async (req, res) => {

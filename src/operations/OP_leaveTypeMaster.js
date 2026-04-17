@@ -11,7 +11,7 @@ exports.addData = async function (body) {
         responseCodes.SUCCESS.message = "Leave type Added Successfully";
         return responseCodes.SUCCESS;
     } catch (e) {
-        console.log(e)
+        
         responseCodes.BAD_REQUEST.data = e;
         responseCodes.BAD_REQUEST.message = "Failed to Add Leave Type";
         return responseCodes.BAD_REQUEST;
@@ -37,7 +37,6 @@ exports.updateData = async function (body) {
 
 exports.deleteData = async function (body) {
     try {
-        console.log(body.data)
         await leaveTypeMaster.update(body.data, {
             where: {
                 id: body.id

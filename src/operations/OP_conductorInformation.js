@@ -1,4 +1,4 @@
-const { conductorInformation } = require("../models");
+const { conductorInformation, productionDatasheet } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 // const { sendNotification } = require("../services/notificationService");
 const { sequelize } = require("../config/database-connection");
@@ -8,11 +8,24 @@ const logger = require("../services/dailyLogService");
 
 exports.addData = async function (body) {
     try {
-        var result = await conductorInformation.create(body.data);
+        let stageUpdate = await productionDatasheet.update(
+          { is_stage: 1 },
+          {
+            where: {
+              id: body.data.pd_id,
+            },
+          },
+        );
+
+        if (stageUpdate[0] > 0) {
+          var result = await conductorInformation.create(body.data);
+        }
+        
         responseCodes.SUCCESS.data = result.id;
         responseCodes.SUCCESS.message = "Row Added Successfully";
         return responseCodes.SUCCESS;
     } catch (e) {
+        console.error("Error in addData:", e);
         responseCodes.BAD_REQUEST.data = e;
         responseCodes.BAD_REQUEST.message = "Failed to Add Row";
         return responseCodes.BAD_REQUEST;
@@ -87,12 +100,12 @@ exports.getOneData = async function (id) {
     }
 };
 
-exports.getOneRowByDatasheet = async function (rel_so_id) {
+exports.getOneRowByDatasheet = async function (pd_id) {
     try {
         let query = `SELECT ci.*, mm.material_name
         FROM conductor_information ci
         JOIN material_master mm ON ci.conductor_material_id = mm.id
-        WHERE ci.rel_so_id = ${rel_so_id} AND ci.status = 1`;
+        WHERE ci.pd_id = ${pd_id} AND ci.status = 1`;
 
         const data = await sequelize.query(query, {
             type: QueryTypes.SELECT
@@ -102,7 +115,7 @@ exports.getOneRowByDatasheet = async function (rel_so_id) {
         return responseCodes.SUCCESS;
     } catch (e) {
         // logger.log("Error in getOneRowByDatasheet:", e);
-        console.log(e)
+        
         responseCodes.BAD_REQUEST.data = e;
         responseCodes.BAD_REQUEST.message = "Failed to Load Data";
         return responseCodes.BAD_REQUEST;

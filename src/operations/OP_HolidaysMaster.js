@@ -14,13 +14,6 @@ exports.addData = async function (body) {
     responseCodes.SUCCESS.message = "Row Added Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
-    console.log("Error name:", e.name);
-    console.log("Error message:", e.message);
-    console.log(
-      "Error fields:",
-      e.errors ? e.errors.map((err) => err.path) : null
-    );
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Row";
     return responseCodes.BAD_REQUEST;
@@ -39,7 +32,7 @@ exports.updateData = async function (body) {
     responseCodes.SUCCESS.message = "Row Updated Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "ERROR");
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Row";
     return responseCodes.BAD_REQUEST;
@@ -92,7 +85,7 @@ exports.getAllData = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -116,7 +109,7 @@ exports.getOneData = async function (id) {
       return responseCodes.NOT_FOUND;
     }
   } catch (e) {
-    console.log(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;

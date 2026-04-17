@@ -65,7 +65,7 @@ exports.getAllData = async function () {
         responseCodes.SUCCESS.message = "";
         return responseCodes.SUCCESS;
     } catch (e) {
-        console.log(e)
+        
         responseCodes.BAD_REQUEST.data = e;
         responseCodes.BAD_REQUEST.message = "Failed to Load Data";
         return responseCodes.BAD_REQUEST;
@@ -77,6 +77,22 @@ exports.getOneData = async function (id) {
         var data = await cableCategoryMaster.findAll({
             where: {
                 id: id
+            }
+        });
+        responseCodes.SUCCESS.data = data;
+        responseCodes.SUCCESS.message = "";
+        return responseCodes.SUCCESS;
+    } catch (e) {
+        responseCodes.BAD_REQUEST.data = e;
+        responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+        return responseCodes.BAD_REQUEST;
+    }
+};
+exports.getActiveData = async function () {
+    try {
+        var data = await cableCategoryMaster.findAll({
+            where: {
+                is_active: 1
             }
         });
         responseCodes.SUCCESS.data = data;

@@ -33,7 +33,7 @@ router.post('/getOneRow', async (req, res, next) => {
 
 // 6 = Get Wire Cable Type
 router.post('/getDataUsingCableCategory', async (req, res, next) => {
-    return res.send(await OP_WireCableTypeMaster.getDataUsingCableCategory(req.body.cable_category_id));
+    return res.send(await OP_WireCableTypeMaster.getDataUsingCableCategory(req.body));
 });
 
 module.exports = router;

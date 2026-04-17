@@ -73,15 +73,12 @@ exports.getAllData = async function () {
   }
 };
 
-exports.getOneData = async function (rel_so_id) {
+exports.getOneData = async function (pd_id) {
   try {
-    let query = `	select om.org_name, im.item_name, so.so_no, wctm.cable_type
-                from rel_sales_order_items rsoi
-                join sales_order so on so.id = rsoi.so_id
-                join organizations_master om on om.id = so.org_id
-                join item_master im on im.id = rsoi.item_id
-                join wire_cable_types_master wctm on wctm.id = so.wire_cable_type_id
-                where rsoi.id = ${rel_so_id} and so.is_deleted = 0;`;
+    let query = `select pd.*,im.item_name, wctm.cable_type from production_datasheet pd
+                  join item_master im on im.id = pd.item_id
+                  join wire_cable_types_master wctm on wctm.id = pd.wire_cable_type_id
+                  where im.is_deleted = 0 and pd.id = ${pd_id}`;
     let data = await sequelize.query(query, { type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
@@ -94,17 +91,17 @@ exports.getOneData = async function (rel_so_id) {
   }
 };
 
-exports.getDatasheetDetails = async function (rel_so_id) {
+exports.getDatasheetDetails = async function (pd_id) {
   try {
-    let conductorQuery = `	select * from conductor_information where rel_so_id = ${rel_so_id};`;
+    let conductorQuery = `	select * from conductor_information where pd_id = ${pd_id};`;
     let conductorData = await sequelize.query(conductorQuery, {
       type: QueryTypes.SELECT,
     });
-    let insulationQuery = `	select * from insulation_information where rel_so_id = ${rel_so_id};`;
+    let insulationQuery = `	select * from insulation_information where pd_id = ${pd_id};`;
     let insulationData = await sequelize.query(insulationQuery, {
       type: QueryTypes.SELECT,
     });
-    let pairingQuery = `	select * from pairing_information where rel_so_id = ${rel_so_id};`;
+    let pairingQuery = `	select * from pairing_information where pd_id = ${pd_id};`;
     let pairingData = await sequelize.query(pairingQuery, {
       type: QueryTypes.SELECT,
     });

@@ -1,6 +1,6 @@
 CREATE TABLE production_datasheet_stages (
     id SERIAL PRIMARY KEY,
-    stage_id INTEGER NOT NULL REFERENCES cable_stage_master(id), 
+    stage_id INTEGER NOT NULL REFERENCES cable_stage_master(id),
     order_no INTEGER NOT NULL,
     production_datasheet_id INTEGER REFERENCES production_datasheet(id), 
     status INTEGER DEFAULT 0, 

@@ -87,11 +87,11 @@ exports.getOneData = async function (id) {
     }
 };
 
-exports.getOneRowByDatasheet = async function (rel_so_id) {
+exports.getOneRowByDatasheet = async function (pd_id) {
     try {
         let query = `select isi.*, mm.material_name  from inner_sheathing_information isi
                         join material_master mm on mm.id = isi.material_id
-                        where isi.rel_so_id = ${rel_so_id} AND isi.status = 1`;
+                        where isi.pd_id = ${pd_id} AND isi.status = 1`;
 
         const data = await sequelize.query(query, {
             type: QueryTypes.SELECT
@@ -101,7 +101,7 @@ exports.getOneRowByDatasheet = async function (rel_so_id) {
         return responseCodes.SUCCESS;
     } catch (e) {
         // logger.log("Error in getOneRowByDatasheet:", e);
-        console.log(e)
+        
         responseCodes.BAD_REQUEST.data = e;
         responseCodes.BAD_REQUEST.message = "Failed to Load Data";
         return responseCodes.BAD_REQUEST;

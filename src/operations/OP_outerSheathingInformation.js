@@ -13,7 +13,7 @@ exports.addData = async function (body) {
         responseCodes.SUCCESS.message = "Row Added Successfully";
         return responseCodes.SUCCESS;
     } catch (e) {
-        console.log(e)
+        
         responseCodes.BAD_REQUEST.data = e;
         responseCodes.BAD_REQUEST.message = "Failed to Add Row";
         return responseCodes.BAD_REQUEST;
@@ -88,12 +88,12 @@ exports.getOneData = async function (id) {
     }
 };
 
-exports.getOneRowByDatasheet = async function (rel_so_id) {
+exports.getOneRowByDatasheet = async function (pd_id) {
     try {
         let query = `SELECT osi.*, mm.material_name
         FROM outer_sheathing_information osi
         JOIN material_master mm ON osi.material_id = mm.id
-        WHERE osi.rel_so_id = ${rel_so_id} AND osi.status = 1`;
+        WHERE osi.pd_id = ${pd_id} AND osi.status = 1`;
 
         const data = await sequelize.query(query, {
             type: QueryTypes.SELECT
@@ -103,7 +103,7 @@ exports.getOneRowByDatasheet = async function (rel_so_id) {
         return responseCodes.SUCCESS;
     } catch (e) {
         // logger.log("Error in getOneRowByDatasheet:", e);
-        console.log(e)
+        
         responseCodes.BAD_REQUEST.data = e;
         responseCodes.BAD_REQUEST.message = "Failed to Load Data";
         return responseCodes.BAD_REQUEST;

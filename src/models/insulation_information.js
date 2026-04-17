@@ -7,11 +7,11 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       primaryKey: true,
     },
-    rel_so_id: {
+    pd_id: {
       type: DataTypes.BIGINT,
       allowNull: false,
       references: {
-        model: "rel_sales_order_items",
+        model: "production_datasheet",
         key: "id",
       },
     },

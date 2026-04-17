@@ -30,7 +30,7 @@ router.post('/getOneRow', async (req, res, next) => {
     return res.send(await OP_pairingInformation.getOneData(req.body.id));
 });
 router.post('/getOneRowByDatasheet', async (req, res, next) => {
-    return res.send(await OP_pairingInformation.getOneRowByDatasheet(req.body.rel_so_id));
+    return res.send(await OP_pairingInformation.getOneRowByDatasheet(req.body.pd_id));
 });
 
 

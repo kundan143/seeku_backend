@@ -11,7 +11,7 @@ exports.addData = async function (body) {
 		responseCodes.SUCCESS.message = "Row Added Successfully";
 		return responseCodes.SUCCESS;
 	} catch (e) {
-		console.log(e)
+		
 		responseCodes.BAD_REQUEST.data = e;
 		responseCodes.BAD_REQUEST.message = "Failed to Add Row";
 		return responseCodes.BAD_REQUEST;

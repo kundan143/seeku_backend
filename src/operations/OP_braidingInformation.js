@@ -13,7 +13,7 @@ exports.addData = async function (body) {
     responseCodes.SUCCESS.message = "Row Added Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Row";
     return responseCodes.BAD_REQUEST;
@@ -86,13 +86,13 @@ exports.getOneData = async function (id) {
   }
 };
 
-exports.getOneRowByDatasheet = async function (rel_so_id) {
+exports.getOneRowByDatasheet = async function (pd_id) {
   try {
     let query = `select bi.*, mm.material_name, mm2.material_name as drain_material_name
                 from braiding_information bi
                 join material_master mm on mm.id = bi.material_id
                 join material_master mm2 on mm2.id = bi.drain_wire_material_id
-                where bi.status = 1 and bi.rel_so_id = ${rel_so_id}`;
+                where bi.status = 1 and bi.pd_id = ${pd_id}`;
 
     const data = await sequelize.query(query, {
       type: QueryTypes.SELECT,

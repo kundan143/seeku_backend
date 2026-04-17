@@ -62,7 +62,7 @@ exports.getAllData = async function () {
 		responseCodes.SUCCESS.message = "";
 		return responseCodes.SUCCESS;
 	} catch (e) {
-		console.log(e, "ERROR");
+		
 		responseCodes.BAD_REQUEST.data = e;
 		responseCodes.BAD_REQUEST.message = "Failed to Load Data";
 		return responseCodes.BAD_REQUEST;

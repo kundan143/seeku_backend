@@ -49,7 +49,6 @@ exports.updateData = async function (body) {
 exports.deleteData = async function (body) {
   const t = await sequelize.transaction();
   try {
-    console.log(body);
     await userLeavesDetails.update(body.data, {
       where: { id: body.id },
       transaction: t,

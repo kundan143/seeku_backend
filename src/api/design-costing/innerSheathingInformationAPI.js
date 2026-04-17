@@ -31,7 +31,7 @@ router.post('/getOneRow', async (req, res, next) => {
 });
 
 router.post('/getOneRowByDatasheet', async (req, res, next) => {
-    return res.send(await OP_innerSheathingInformation.getOneRowByDatasheet(req.body.rel_so_id));
+    return res.send(await OP_innerSheathingInformation.getOneRowByDatasheet(req.body.pd_id));
 });
 
 

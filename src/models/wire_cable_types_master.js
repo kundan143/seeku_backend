@@ -19,10 +19,10 @@ let columns = {
         type: DataTypes.TEXT,
         allowNull: true
     },
-    status: {
-        type: DataTypes.BOOLEAN,
+    is_active: {
+        type: DataTypes.INTEGER,
         allowNull: true,
-        defaultValue: true
+        defaultValue: 1
     },
     created_by: {
         type: DataTypes.INTEGER,
