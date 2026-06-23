@@ -19,6 +19,23 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    yearly_limit: {
+      type: DataTypes.NUMERIC(5, 2),
+      allowNull: false,
+    },
+    icon: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },    
+    color_code: {
+      type: DataTypes.STRING(7),
+      allowNull: true,
+    },
+    carry_forward: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+    },
     status: {
       type: DataTypes.INTEGER,
       allowNull: true,

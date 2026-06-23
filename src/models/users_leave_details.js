@@ -68,29 +68,9 @@ module.exports = function (sequelize, DataTypes) {
         key: "id",
       },
     },
-    approved_date: {
+    rejected_date: {
       type: DataTypes.DATE,
       allowNull: true,
-    },
-    rejected_by: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      references: {
-        model: "users_master",
-        key: "id",
-      },
-    },
-    approved_date: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    rejected_by: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      references: {
-        model: "users_master",
-        key: "id",
-      },
     },
     cancelled_date: {
       type: DataTypes.DATE,

@@ -1,7 +1,11 @@
-const { userLeavesDetails } = require("../models");
+const {
+  userLeavesDetails,
+  userLeaveBalance,
+  holidaysMaster,
+} = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
-const { Op } = require("sequelize");
+const { Op, where, DATE } = require("sequelize");
 
 exports.addData = async function (body) {
   const t = await sequelize.transaction();
@@ -45,6 +49,92 @@ exports.updateData = async function (body) {
     return responseCodes.BAD_REQUEST;
   }
 };
+exports.approvalUpdateData = async function (body) {
+  const t = await sequelize.transaction();
+  try {
+    if (body.data.status === 1) {
+      // Approved
+      const currentYear = new Date().getFullYear();
+      const userLeaveBalanceRecord = await userLeaveBalance.findOne({
+        where: {
+          user_id: body.data.user_id,
+          leave_type_id: body.data.leave_type_id,
+          year: currentYear,
+        },
+        transaction: t,
+      });
+
+      if (!userLeaveBalanceRecord) {
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "User Leave Balance Not Found";
+        return responseCodes.BAD_REQUEST;
+      }
+
+      const holidaysCount = await holidaysMaster.count({
+        where: {
+          is_optional: false,
+          status: 1,
+          holiday_date: {
+            [Op.between]: [body.data.start_date, body.data.end_date],
+          },
+        },
+        transaction: t,
+      });
+
+      const remainingDays = Number(userLeaveBalanceRecord.remaining_days);
+      const usedDays = Number(userLeaveBalanceRecord.used_days);
+      const totalDays = Number(body.data.total_days);
+      const actualLeave = totalDays - holidaysCount;
+      if (actualLeave <= 0) {
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "Invalid Leave Duration";
+        return responseCodes.BAD_REQUEST;
+      }
+      if (remainingDays < actualLeave) {
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "Insufficient Leave Balance";
+        return responseCodes.BAD_REQUEST;
+      }
+      const updatedUsedDays = Number((usedDays + actualLeave).toFixed(1));
+
+      const updatedRemainingDays = Number((remainingDays - actualLeave).toFixed(1));
+
+      await userLeaveBalance.update(
+        {
+          used_days: updatedUsedDays,
+          remaining_days: updatedRemainingDays,
+        },
+        {
+          where: {
+            user_id: body.data.user_id,
+            leave_type_id: body.data.leave_type_id,
+            year: currentYear,
+          },
+          transaction: t,
+        }
+      );
+
+      await userLeavesDetails.update(body.data, {
+        where: { id: body.id },
+        transaction: t,
+      });
+    } else if (body.data.status === 2) {
+      await userLeavesDetails.update(body.data, {
+        where: { id: body.id },
+        transaction: t,
+      });
+    }
+    await t.commit();
+    responseCodes.SUCCESS.data = null;
+    responseCodes.SUCCESS.message = "Leave Updated Successfully";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    await t.rollback();
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Update Leave";
+    return responseCodes.BAD_REQUEST;
+  }
+};
 
 exports.deleteData = async function (body) {
   const t = await sequelize.transaction();
@@ -71,6 +161,7 @@ exports.deleteData = async function (body) {
 exports.getAllData = async function (body) {
   try {
     let query = {};
+    let bodyStatus = body.status ? `uld.status = ${body.status} and` : "";
     query = `SELECT uld.*, ltm.leave_name, CONCAT(emp.first_name, ' ', emp.last_name) as employee_name,
                     CASE
                         WHEN uld.status = 0 THEN 'Pending'
@@ -96,7 +187,7 @@ exports.getAllData = async function (body) {
                 LEFT JOIN users_master cu ON cu.id = uld.created_by
                 LEFT JOIN users_master au ON au.id = uld.approved_by
                 LEFT JOIN users_master ru ON ru.id = uld.rejected_by
-                WHERE uld.status = ${body.status} and uld.status != 3
+                WHERE ${bodyStatus} uld.status != 3
                 ORDER BY uld.id DESC;`;
     const data = await sequelize.query(query, {
       type: sequelize.QueryTypes.SELECT,

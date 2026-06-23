@@ -10,6 +10,8 @@ h.usersSalaryDetails = require("../users_salary_details")(sequelize, DataTypes);
 h.userLeavesDetails = require("../users_leave_details")(sequelize, DataTypes);
 h.employeeExpenses = require("../employee_expense")(sequelize, DataTypes);
 h.holidaysMaster = require("../holidays_master")(sequelize, DataTypes);
+h.companyNewsMaster = require("../company_news")(sequelize, DataTypes);
+h.userLeaveBalance = require("../user_leave_balance")(sequelize, DataTypes);
 
 
 h.emergencyContacts.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
@@ -43,6 +45,22 @@ h.employeeExpenses.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey:
 h.holidaysMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 h.holidaysMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
 h.holidaysMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+
+h.companyNewsMaster.belongsTo(m.newsTypeMaster, { foreignKey: 'news_type_id' });
+h.companyNewsMaster.belongsTo(m.departmentMaster, { foreignKey: 'department_id' });
+h.companyNewsMaster.belongsTo(m.priorityMaster, { foreignKey: 'priority_id' });
+h.companyNewsMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+h.companyNewsMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
+h.companyNewsMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+
+h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
+h.userLeaveBalance.belongsTo(m.leaveTypeMaster, { foreignKey: 'leave_type_id' });
+h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
+h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'updated_by' });
+h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
+
 
 
 module.exports = h;

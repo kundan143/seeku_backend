@@ -28,5 +28,13 @@ router.post('/deleteRow', async (req, res, next) => {
 router.post('/getOneRow', async (req, res, next) => {
     return res.send(await OP_HolidaysMaster.getOneData(req.body.id));
 });
+// 5 = Get Last Five Holidays
+router.get('/getLastFiveHolidays', async (req, res, next) => {
+    return res.send(await OP_HolidaysMaster.getLastFiveHolidays());
+});
+// 5 = Holiday count
+router.post('/getHolidaysCount', async (req, res, next) => {
+    return res.send(await OP_HolidaysMaster.getHolidaysCount(req.body));
+});
 
 module.exports = router;

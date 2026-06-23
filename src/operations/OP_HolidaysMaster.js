@@ -91,6 +91,46 @@ exports.getAllData = async function (body) {
     return responseCodes.BAD_REQUEST;
   }
 };
+exports.getLastFiveHolidays = async function () {
+  try {
+    var query = `SELECT hm.holiday_name as name, hm.holiday_date as date, (hm.holiday_date - CURRENT_DATE) AS days_left
+                FROM holidays_master hm
+                WHERE hm.status = 1
+                AND hm.holiday_date >= CURRENT_DATE
+                AND EXTRACT(YEAR FROM hm.holiday_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+                ORDER BY hm.holiday_date ASC
+                LIMIT 4;;`;
+    var data = await sequelize.query(query, { type: QueryTypes.SELECT });
+
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+exports.getHolidaysCount = async function (body) {
+  try {
+    var query = `SELECT count(*) as total_holidays
+                  FROM holidays_master hm
+                  WHERE hm.is_optional = false
+                  AND hm.status = 1
+                  AND DATE(hm.holiday_date) BETWEEN DATE('${body.start_date}') AND DATE('${body.end_date}');`;
+    var data = await sequelize.query(query, { type: QueryTypes.SELECT });
+
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
 exports.getOneData = async function (id) {
   try {
     var data = await holidaysMaster.findOne({

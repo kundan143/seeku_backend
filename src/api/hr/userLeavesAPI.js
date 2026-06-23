@@ -29,4 +29,9 @@ router.post('/getOneRow', async (req, res, next) => {
     return res.send(await OP_usersLeave.getOneData(req.body.id));
 });
 
+// 6 = Approval Update Row
+router.post('/approvalUpdate', async (req, res, next) => {
+    return res.send(await OP_usersLeave.approvalUpdateData(req.body));
+});
+
 module.exports = router;
