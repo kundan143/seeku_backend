@@ -345,7 +345,7 @@ exports.getOneData = async function (id) {
     JOIN emp_type_master etm on etm.id = um.emp_type_id
     JOIN department_master dm on dm.id = um.department_id
     JOIN designation_master dm2 on dm2.id = um.designation_id
-    JOIN users_master um2 on um2.id = um.reporting_manager_id
+    LEFT JOIN users_master um2 on um2.id = um.reporting_manager_id
     JOIN blood_group_master bgm on bgm.id = um.blood_group_id
     JOIN emergency_contacts ec on ec.user_id = um.id
     JOIN relation_master rm on rm.id = ec.relation_id
@@ -426,6 +426,29 @@ exports.getTokens = async function (body) {
     
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+exports.getCompanyHierarchy = async function (id) {
+  try {
+    let query = {};
+    query = `select um.id, concat(um.first_name, ' ', um.last_name) as name, dm.designation,
+              dm2."name" as dept, um.email, um.reporting_manager_id as managerId
+              from users_master as um
+              join designation_master dm on dm.id = um.designation_id
+              join department_master dm2 on dm2.id = um.department_id
+              where um.status = true and um.id =${id}
+              ORDER BY um.reporting_manager_id  DESC;`;
+    const data = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
   }
 };

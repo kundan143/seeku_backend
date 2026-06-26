@@ -55,5 +55,8 @@ router.post('/updatePassword', async (req, res, next) => {
 router.post('/permissionUser', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.permissionUser(req.body));
 });
+router.post('/getCompanyHierarchy', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.getCompanyHierarchy(req.body.user_id));
+});
 
 module.exports = router;
