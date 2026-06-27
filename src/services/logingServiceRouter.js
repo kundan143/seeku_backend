@@ -42,7 +42,7 @@ routers.post("/user_login", async (req, res) => {
           if (user.incorrect_password_attempts > 0) {
             await usersMaster.update(
               { incorrect_password_attempts: 0 },
-              { where: { id: user.id } }
+              { where: { id: user.id } },
             );
           }
 
@@ -89,7 +89,7 @@ routers.post("/user_login", async (req, res) => {
           if (attempts >= 3) {
             updateData.account_block = true;
             logger.warn(
-              `Account locked for user: ${email} after 3 failed attempts.`
+              `Account locked for user: ${email} after 3 failed attempts.`,
             );
             await usersMaster.update(updateData, { where: { id: user.id } });
             return res.status(403).send({
@@ -99,7 +99,7 @@ routers.post("/user_login", async (req, res) => {
           } else {
             await usersMaster.update(updateData, { where: { id: user.id } });
             logger.warn(
-              `Incorrect password attempt ${attempts} for user: ${email}`
+              `Incorrect password attempt ${attempts} for user: ${email}`,
             );
             return res.status(401).send(responseCodes.UNAUTHORIZED);
           }
@@ -116,31 +116,46 @@ routers.post("/user_login", async (req, res) => {
       return res.status(400).send(responseCodes.BAD_REQUEST);
     }
   } catch (e) {
-    
     logger.error(`Unexpected error: ${e.message}`);
     return res.status(500).send(responseCodes.INTERNAL_SERVER_ERROR);
   }
 });
 
-routers.post("/test_bcrypt", async (req, res) => {
+routers.post("/forgot_password", async (req, res) => {
   try {
-    if (req.body && req.body.password) {
-      let plainPassword = req.body.password;
+    const { email, password } = req.body;
 
-      // Generate salt and hash the password
-      const salt = bcrypt.genSaltSync(10);
-      const hash = bcrypt.hashSync(plainPassword, salt);
-
-      logger.info(`Password hashed successfully`);
-
-      return res.status(200).send({ hashedPassword: hash });
-    } else {
-      logger.warn(`Password not provided in request`);
-      return res.status(400).send(responseCodes.BAD_REQUEST);
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email are required." });
     }
-  } catch (e) {
-    logger.error(`Error hashing password: ${e.message}`);
-    return res.status(500).send(responseCodes.INTERNAL_SERVER_ERROR);
+    if (!password) {
+      return res.status(400).json({ success: false, message: "password are required." });
+    }
+
+    // Find user by email
+    const user = await usersMaster.findOne({
+      where: { email: email },
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Email does not exist." });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Update password
+    await usersMaster.update({password: hashedPassword},
+      {
+        where: {email: email,},
+      },
+    );
+
+    return res.status(200).json({ success: true, message: "Password updated successfully." });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 routers.post("/register", async (req, res) => {

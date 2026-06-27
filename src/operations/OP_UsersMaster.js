@@ -433,7 +433,7 @@ exports.getTokens = async function (body) {
 exports.getCompanyHierarchy = async function (id) {
   try {
     let query = {};
-    query = `select um.id, concat(um.first_name, ' ', um.last_name) as name, dm.designation,
+    query = `select um.id, concat(um.first_name, ' ', um.last_name) as name, dm.designation as role,
               dm2."name" as dept, um.email, um.reporting_manager_id as managerId
               from users_master as um
               join designation_master dm on dm.id = um.designation_id
