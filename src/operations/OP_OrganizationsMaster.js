@@ -148,22 +148,22 @@ exports.searchOrganizations = async function (body) {
   }
 };
 
-// exports.getOneData = async function (id) {
-// 	try {
-// 		var data = await organizationsMaster.findAll({
-// 			where: {
-// 				id: id
-// 			}
-// 		});
-// 		responseCodes.SUCCESS.data = data;
-// 		responseCodes.SUCCESS.message = "";
-// 		return responseCodes.SUCCESS;
-// 	} catch (e) {
-// 		responseCodes.BAD_REQUEST.data = e;
-// 		responseCodes.BAD_REQUEST.message = "Failed to Load Data";
-// 		return responseCodes.BAD_REQUEST;
-// 	}
-// };
+exports.getOneData = async function (id) {
+	try {
+		var data = await organizationsMaster.findAll({
+			where: {
+				id: id
+			}
+		});
+		responseCodes.SUCCESS.data = data;
+		responseCodes.SUCCESS.message = "";
+		return responseCodes.SUCCESS;
+	} catch (e) {
+		responseCodes.BAD_REQUEST.data = e;
+		responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+		return responseCodes.BAD_REQUEST;
+	}
+};
 
 exports.getCategoryWiseOrg = async function (body) {
   try {
