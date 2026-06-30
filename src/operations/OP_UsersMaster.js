@@ -351,7 +351,7 @@ exports.getOneData = async function (id) {
     JOIN relation_master rm on rm.id = ec.relation_id
     JOIN users_bank_details ubd on ubd.user_id = um.id
     JOIN bank_master bm on bm.id = ubd.bank_id
-    JOIN users_salary_details usd ON usd.user_id = um.id
+    LEFT JOIN users_salary_details usd ON usd.user_id = um.id
 		WHERE um.id = ${id}
     ORDER BY usd.id DESC
     LIMIT 1`;

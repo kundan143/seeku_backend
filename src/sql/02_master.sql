@@ -482,60 +482,112 @@ ON CONFLICT (bank_name) DO NOTHING;
 
 COMMIT;
 
+-- =====================================================================
+-- Table: users_salary_details
+-- Purpose: Stores salary structure details for each employee, including
+--          earnings, deductions, employer contributions, and audit trail.
+-- PostgreSQL syntax (inline COMMENT is not supported in PostgreSQL,
+-- so comments are added separately below via COMMENT ON COLUMN).
+-- =====================================================================
+
 CREATE TABLE users_salary_details (
-    id SERIAL PRIMARY KEY,                                      -- Unique ID for each record
-    user_id INTEGER NOT NULL REFERENCES users_master(id),                  -- Employee/User reference
-    basic_salary DECIMAL(10,2) DEFAULT 0,                       -- Basic salary
-    hra DECIMAL(10,2) DEFAULT 0,                                -- House Rent Allowance
-    conveyance DECIMAL(10,2) DEFAULT 0,                         -- Conveyance allowance
-    medical_allowance DECIMAL(10,2) DEFAULT 0,                  -- Medical allowance
-    special_allowance DECIMAL(10,2) DEFAULT 0,                  -- Special allowance
-    bonus DECIMAL(10,2) DEFAULT 0,                              -- Bonus amount
-    pf_employer DECIMAL(10,2) DEFAULT 0,                        -- Employer PF contribution
-    pf_employee DECIMAL(10,2) DEFAULT 0,                        -- Employee PF contribution
-    esi_employer DECIMAL(10,2) DEFAULT 0,                       -- Employer ESI contribution
-    esi_employee DECIMAL(10,2) DEFAULT 0,                       -- Employee ESI contribution
-    professional_tax DECIMAL(10,2) DEFAULT 0,                   -- Professional tax
-    other_deduction DECIMAL(10,2) DEFAULT 0,                    -- Other deductions
-    gross_salary DECIMAL(10,2) DEFAULT 0,                       -- Gross salary
-    net_salary DECIMAL(10,2) DEFAULT 0,                         -- Net salary
-    created_by INTEGER NOT NULL REFERENCES users_master(id),                                              -- User ID who created this record
-    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,              -- Record creation timestamp
-    updated_by INTEGER REFERENCES users_master(id),                                              -- User ID who last updated this record
-    updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,              -- Last update timestamp
-    is_active BOOLEAN DEFAULT TRUE,
-    CONSTRAINT fk_users_salary_details_user FOREIGN KEY (user_id) REFERENCES users_master(id) ON DELETE CASCADE
+    id                          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id                     BIGINT NULL,
+    other_user_name             VARCHAR(150) NULL,
+
+    -- Earnings
+    basic_salary                DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    dearness_allowance          DECIMAL(12,2) NULL DEFAULT 0.00,
+    city_allowance              DECIMAL(12,2) NULL DEFAULT 0.00,
+    hra                         DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    conveyance                  DECIMAL(12,2) NULL DEFAULT 0.00,
+    medical_allowance           DECIMAL(12,2) NULL DEFAULT 0.00,
+    lta                         DECIMAL(12,2) NULL DEFAULT 0.00,
+    special_allowance           DECIMAL(12,2) NULL DEFAULT 0.00,
+    bonus                       DECIMAL(12,2) NULL DEFAULT 0.00,
+
+    -- Deductions
+    pf_employee                 DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    professional_tax            DECIMAL(12,2) NULL DEFAULT 0.00,
+    income_tax                  DECIMAL(12,2) NULL DEFAULT 0.00,
+    employee_state_insurance    DECIMAL(12,2) NULL DEFAULT 0.00,
+    loan_deduction              DECIMAL(12,2) NULL DEFAULT 0.00,
+    other_deduction             DECIMAL(12,2) NULL DEFAULT 0.00,
+
+    -- Employer contributions
+    pf_employer                 DECIMAL(12,2) NULL DEFAULT 0.00,
+    esi_employer                DECIMAL(12,2) NULL DEFAULT 0.00,
+    gratuity                    DECIMAL(12,2) NULL DEFAULT 0.00,
+
+    -- Other details
+    effective_from              DATE NULL,
+    pay_frequency                VARCHAR(20) NULL,
+
+    -- Calculated summary
+    gross_salary                 DECIMAL(12,2) NULL DEFAULT 0.00,
+    total_deductions              DECIMAL(12,2) NULL DEFAULT 0.00,
+    net_salary                    DECIMAL(12,2) NULL DEFAULT 0.00,
+
+    -- Audit columns
+    status                         SMALLINT NOT NULL DEFAULT 1,
+    created_by                     BIGINT NULL,
+    created_date                   TIMESTAMP NULL,
+    modified_by                    BIGINT NULL,
+    modified_date                  TIMESTAMP NULL,
+    deleted_by                     BIGINT NULL,
+    deleted_date                   TIMESTAMP NULL,
+
+    CONSTRAINT fk_emp_salary_user FOREIGN KEY (user_id) REFERENCES users_master(id),
+    CONSTRAINT fk_emp_salary_created_by FOREIGN KEY (created_by) REFERENCES users_master(id),
+    CONSTRAINT fk_emp_salary_modified_by FOREIGN KEY (modified_by) REFERENCES users_master(id),
+    CONSTRAINT fk_emp_salary_deleted_by FOREIGN KEY (deleted_by) REFERENCES users_master(id)
 );
 
--- Add useful indexes
-CREATE INDEX idx_users_salary_details_user_id ON users_salary_details(user_id);
-CREATE INDEX idx_users_salary_details_is_active ON users_salary_details(is_active);
-CREATE INDEX idx_users_salary_details_created_at ON users_salary_details(created_date);
+-- =====================================================================
+-- Table & column comments
+-- =====================================================================
 
-COMMENT ON TABLE users_salary_details IS 'Stores employee salary structure and payroll details.';
+COMMENT ON TABLE users_salary_details IS 'Stores employee salary structure including earnings, deductions, employer contributions, and audit trail';
 
-COMMENT ON COLUMN users_salary_details.id IS 'Primary key identifier for the salary record.';
-COMMENT ON COLUMN users_salary_details.user_id IS 'Foreign key reference to the users table.';
-COMMENT ON COLUMN users_salary_details.basic_salary IS 'Base salary before allowances and deductions.';
-COMMENT ON COLUMN users_salary_details.hra IS 'House Rent Allowance (HRA) portion of the salary.';
-COMMENT ON COLUMN users_salary_details.conveyance IS 'Conveyance or transport allowance.';
-COMMENT ON COLUMN users_salary_details.medical_allowance IS 'Medical allowance component.';
-COMMENT ON COLUMN users_salary_details.special_allowance IS 'Special allowance component.';
-COMMENT ON COLUMN users_salary_details.bonus IS 'Bonus amount paid to the employee.';
-COMMENT ON COLUMN users_salary_details.pf_employer IS 'Employer contribution to Provident Fund.';
-COMMENT ON COLUMN users_salary_details.pf_employee IS 'Employee contribution to Provident Fund.';
-COMMENT ON COLUMN users_salary_details.esi_employer IS 'Employer contribution to Employee State Insurance.';
-COMMENT ON COLUMN users_salary_details.esi_employee IS 'Employee contribution to Employee State Insurance.';
-COMMENT ON COLUMN users_salary_details.professional_tax IS 'Professional tax deducted as per state law.';
-COMMENT ON COLUMN users_salary_details.other_deduction IS 'Any other miscellaneous deductions.';
-COMMENT ON COLUMN users_salary_details.gross_salary IS 'Total gross salary before deductions.';
-COMMENT ON COLUMN users_salary_details.net_salary IS 'Final salary payable to employee after all deductions.';
-COMMENT ON COLUMN users_salary_details.created_by IS 'User ID who created this record.';
-COMMENT ON COLUMN users_salary_details.created_date IS 'Timestamp when the record was created.';
-COMMENT ON COLUMN users_salary_details.updated_by IS 'User ID who last updated this record.';
-COMMENT ON COLUMN users_salary_details.updated_date IS 'Timestamp of last update.';
-COMMENT ON COLUMN users_salary_details.is_active IS 'Indicates whether this salary record is active.';
+COMMENT ON COLUMN users_salary_details.id IS 'Primary key, unique salary record identifier';
+COMMENT ON COLUMN users_salary_details.user_id IS 'FK to users table; NULL when other_user_name is used instead';
+COMMENT ON COLUMN users_salary_details.other_user_name IS 'Manually entered employee name when user_id is not selected from the list (Other option)';
 
+COMMENT ON COLUMN users_salary_details.basic_salary IS 'Basic salary component';
+COMMENT ON COLUMN users_salary_details.dearness_allowance IS 'Dearness Allowance (DA)';
+COMMENT ON COLUMN users_salary_details.city_allowance IS 'City Compensatory Allowance (CCA)';
+COMMENT ON COLUMN users_salary_details.hra IS 'House Rent Allowance (HRA)';
+COMMENT ON COLUMN users_salary_details.conveyance IS 'Conveyance Allowance';
+COMMENT ON COLUMN users_salary_details.medical_allowance IS 'Medical Allowance';
+COMMENT ON COLUMN users_salary_details.lta IS 'Leave Travel Allowance (LTA)';
+COMMENT ON COLUMN users_salary_details.special_allowance IS 'Special Allowance';
+COMMENT ON COLUMN users_salary_details.bonus IS 'Bonus amount';
+
+COMMENT ON COLUMN users_salary_details.pf_employee IS 'Provident Fund - Employee contribution';
+COMMENT ON COLUMN users_salary_details.professional_tax IS 'Professional Tax (PT)';
+COMMENT ON COLUMN users_salary_details.income_tax IS 'Income Tax / TDS deduction';
+COMMENT ON COLUMN users_salary_details.employee_state_insurance IS 'Employee State Insurance - Employee contribution (ESI)';
+COMMENT ON COLUMN users_salary_details.loan_deduction IS 'Loan or salary advance deduction';
+COMMENT ON COLUMN users_salary_details.other_deduction IS 'Any other miscellaneous deduction';
+
+COMMENT ON COLUMN users_salary_details.pf_employer IS 'Provident Fund - Employer contribution';
+COMMENT ON COLUMN users_salary_details.esi_employer IS 'Employee State Insurance - Employer contribution';
+COMMENT ON COLUMN users_salary_details.gratuity IS 'Gratuity contribution by employer';
+
+COMMENT ON COLUMN users_salary_details.effective_from IS 'Date from which this salary structure is effective';
+COMMENT ON COLUMN users_salary_details.pay_frequency IS 'Pay frequency: monthly, bi_weekly, weekly';
+
+COMMENT ON COLUMN users_salary_details.gross_salary IS 'Sum of all earning components (calculated)';
+COMMENT ON COLUMN users_salary_details.total_deductions IS 'Sum of all deduction components (calculated)';
+COMMENT ON COLUMN users_salary_details.net_salary IS 'Gross salary minus total deductions (calculated)';
+
+COMMENT ON COLUMN users_salary_details.status IS 'Record status: 1 = active, 0 = inactive/soft-deleted';
+COMMENT ON COLUMN users_salary_details.created_by IS 'FK to users table; user who created this record';
+COMMENT ON COLUMN users_salary_details.created_date IS 'Timestamp when the record was created (India timezone)';
+COMMENT ON COLUMN users_salary_details.modified_by IS 'FK to users table; user who last updated this record';
+COMMENT ON COLUMN users_salary_details.modified_date IS 'Timestamp when the record was last updated (India timezone)';
+COMMENT ON COLUMN users_salary_details.deleted_by IS 'FK to users table; user who last changed status (e.g. on delete)';
+COMMENT ON COLUMN users_salary_details.deleted_date IS 'Timestamp when status was last changed (e.g. on delete)';
 
 CREATE TABLE users_bank_details (
     id SERIAL PRIMARY KEY,                             -- Unique record ID

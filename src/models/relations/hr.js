@@ -25,7 +25,8 @@ h.usersBankDetails.belongsTo(m.usersMaster, { foreignKey: 'updated_by' });
 
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
-h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'updated_by' });
+h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
+h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
 
 
 h.userLeavesDetails.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
