@@ -50,7 +50,10 @@ routers.post("/user_login", async (req, res) => {
           let designationId = user.designation_id;
           let userId = user.id;
 
-          let menuPermissionSQL = `SELECT mm.*, mm.id as mm_id, mp.*, mp.id as mp_id
+          let menuPermissionSQL = `SELECT mm.*, mm.id as mm_id,
+                                        mp.id as mp_id, mp.menu_id as mp_menu_id,
+                                        mp.designation_id as mp_designation_id, mp.user_id as mp_user_id,
+                                        mp.add_opt, mp.edit_opt, mp.view_opt, mp.delete_opt
                                         FROM menu_master AS mm
                                         LEFT JOIN menu_permission AS mp ON mp.menu_id = mm.id
                                         WHERE mp.designation_id = :designationId AND mp.user_id = :userId
@@ -73,6 +76,7 @@ routers.post("/user_login", async (req, res) => {
             menuDet: all_menu,
             links: all_links,
           };
+         
 
           var finalUserData = { userDet: resUsersMaster };
 
@@ -81,6 +85,7 @@ routers.post("/user_login", async (req, res) => {
           });
 
           finalData.userDettoken = tokenUser;
+           console.log(finalData.userDettoken ,"kundan")
           return res.status(200).send({ data: finalData });
         } else {
           // Increment incorrect_password_attempts
@@ -90,8 +95,7 @@ routers.post("/user_login", async (req, res) => {
           // Lock account if attempts >= 3
           if (attempts >= 3) {
             updateData.account_block = true;
-            logger.warn(
-              `Account locked for user: ${email} after 3 failed attempts.`,
+            logger.warn(`Account locked for user: ${email} after 3 failed attempts.`,
             );
             await usersMaster.update(updateData, { where: { id: user.id } });
             return res.status(403).send({
@@ -242,6 +246,10 @@ function recursion(get_parents, arr) {
         label: elem.menu_name,
         icon: elem.icon,
         routerLink: router_link_arr,
+        add_opt: elem.add_opt,
+        edit_opt: elem.edit_opt,
+        view_opt: elem.view_opt,
+        delete_opt: elem.delete_opt,
         items: recursion(child_arr_new, arr),
       };
     } else {
@@ -250,6 +258,10 @@ function recursion(get_parents, arr) {
         label: elem.menu_name,
         icon: elem.icon,
         routerLink: router_link_arr,
+        add_opt: elem.add_opt,
+        edit_opt: elem.edit_opt,
+        view_opt: elem.view_opt,
+        delete_opt: elem.delete_opt,
       };
     }
     final_arr.push(menu_obj);
