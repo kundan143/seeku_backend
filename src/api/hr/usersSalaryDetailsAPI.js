@@ -29,4 +29,9 @@ router.post('/getOneRow', async (req, res, next) => {
     return res.send(await OP_usersSalaryDetails.getOneData(req.body.id));
 });
 
+// 6 = Get All Rows By User ID
+router.post('/getRowsByUser', async (req, res, next) => {
+    return res.send(await OP_usersSalaryDetails.getDataByUserId(req.body.user_id));
+});
+
 module.exports = router;

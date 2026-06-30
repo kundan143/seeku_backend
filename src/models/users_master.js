@@ -193,6 +193,14 @@ let columns = {
             key: "id"
         },
     },
+    reset_otp: {
+        type: DataTypes.STRING(6),
+        allowNull: true,
+    },
+    reset_otp_expiry: {
+        type: DataTypes.DATE,
+        allowNull: true,
+    },
 };
 let optional = {
     sequelize,

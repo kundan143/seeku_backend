@@ -262,7 +262,7 @@ exports.getAllData = async function (body) {
 exports.permissionUser = async function (body) {
   try {
     let status = ``;
-    status = `WHERE status = true and designation_id = ${body.designation_id}`
+    status = `WHERE status = true and designation_id = :designation_id`
 
     let query = `SELECT um.*, concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name
 		FROM users_master AS um
@@ -270,6 +270,7 @@ exports.permissionUser = async function (body) {
 		${status} ORDER BY um.id ASC`;
     var data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
+      replacements: { designation_id: body.designation_id },
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
@@ -305,10 +306,11 @@ exports.getActiveUsersById = async function (body) {
     var query = `SELECT um.*, concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name 
 		FROM users_master AS um 
 		JOIN role_master AS rm ON rm.id = um.role_id 
-		WHERE um.id != ${body.id} AND account_block = false 
+		WHERE um.id != :userId AND account_block = false
 		ORDER BY um.id ASC`;
     var data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
+      replacements: { userId: body.id },
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
@@ -324,8 +326,8 @@ exports.getActiveUsersById = async function (body) {
 exports.getOneData = async function (id) {
   try {
     var query = `select usd.basic_salary, usd.hra, usd.conveyance, usd.medical_allowance,
-    usd.special_allowance, usd.bonus, usd.pf_employee, usd.esi_employer, usd.esi_employee,
-    usd.esi_employer, usd.professional_tax, usd.professional_tax, usd.other_deduction,usd.gross_salary,
+    usd.special_allowance, usd.bonus, usd.pf_employee, usd.esi_employer,
+    usd.professional_tax, usd.other_deduction,usd.gross_salary,
     usd.net_salary, um.first_name, um.last_name, um.middle_name,
     um.email, um.work_email,um.mobile, um.dob, um.doj,
     um.current_address, um.permanent_address, gm.gender_name,
@@ -352,11 +354,12 @@ exports.getOneData = async function (id) {
     JOIN users_bank_details ubd on ubd.user_id = um.id
     JOIN bank_master bm on bm.id = ubd.bank_id
     LEFT JOIN users_salary_details usd ON usd.user_id = um.id
-		WHERE um.id = ${id}
+		WHERE um.id = :id
     ORDER BY usd.id DESC
     LIMIT 1`;
     var data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
+      replacements: { id },
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
@@ -370,12 +373,16 @@ exports.getOneData = async function (id) {
 
 exports.getRoleWiseUsers = async function (body) {
   try {
-    var query = `SELECT um.*, rm.role_name 
-		FROM users_master AS um 
-		JOIN role_master AS rm ON rm.id = um.role_id 
-		WHERE rm.id IN (${body.role_id}) AND account_block = false `;
+    const roleIds = (Array.isArray(body.role_id) ? body.role_id : String(body.role_id).split(','))
+      .map(Number).filter(n => !isNaN(n) && n > 0);
+    if (!roleIds.length) throw new Error('Invalid role_id');
+    var query = `SELECT um.*, rm.role_name
+		FROM users_master AS um
+		JOIN role_master AS rm ON rm.id = um.role_id
+		WHERE rm.id IN (:roleIds) AND account_block = false `;
     var data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
+      replacements: { roleIds },
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
@@ -413,11 +420,12 @@ exports.updateToken = async function (body) {
 exports.getTokens = async function (body) {
   try {
     var query =
-      `SELECT user_fcm_token 
-		FROM users_master 
-		WHERE user_fcm_token IS NOT NULL AND status = ` + body.status;
+      `SELECT user_fcm_token
+		FROM users_master
+		WHERE user_fcm_token IS NOT NULL AND status = :status`;
     var data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
+      replacements: { status: body.status },
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "Token Updated Successfully";
@@ -438,10 +446,11 @@ exports.getCompanyHierarchy = async function (id) {
               from users_master as um
               join designation_master dm on dm.id = um.designation_id
               join department_master dm2 on dm2.id = um.department_id
-              where um.status = true and um.id =${id}
+              where um.status = true and um.id = :id
               ORDER BY um.reporting_manager_id  DESC;`;
     const data = await sequelize.query(query, {
       type: sequelize.QueryTypes.SELECT,
+      replacements: { id },
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";

@@ -20,17 +20,17 @@ const jwtTokenValiadtion = async function (req, res, next) {
       next();
     } else {
       logger.info("Middleware : Invalid token, access Denied");
-      res.send({
+      return res.status(401).send({
         message: "danger",
-        code: "201",
+        code: "TOKEN_INVALID",
         data: "Invalid token, access Denied",
       });
     }
   } catch (err) {
     logger.info("Middleware : Invalid token, unable to decode");
-    res.send({
+    return res.status(401).send({
       message: "danger",
-      code: "201",
+      code: "TOKEN_INVALID",
       data: "Invalid Token, unable to decode",
     });
   }

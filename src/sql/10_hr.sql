@@ -110,3 +110,56 @@ COMMENT ON COLUMN company_news.modified_by     IS 'User who last modified this r
 COMMENT ON COLUMN company_news.modified_date   IS 'Timestamp of the last modification';
 COMMENT ON COLUMN company_news.deleted_by     IS 'User who soft-deleted this record (FK → users_master)';
 COMMENT ON COLUMN company_news.deleted_date   IS 'Timestamp when the record was soft-deleted';
+
+
+-- ============================================================
+-- Menu Master: HR Module Navigation
+-- Run this block once after the menu_master table exists.
+-- ============================================================
+
+-- 1. Insert HR parent menu (top-level, no parent_id) if not already present
+INSERT INTO menu_master (parent_id, menu_name, link, icon, parent_rank, child_rank)
+SELECT NULL, 'HR Module', '/hr', 'pi pi-fw pi-users', 5, 0
+WHERE NOT EXISTS (
+    SELECT 1 FROM menu_master WHERE menu_name = 'HR Module' AND parent_id IS NULL
+);
+
+-- 2. Insert each HR child page under the HR Module parent (safe if re-run)
+WITH hr_parent AS (
+    SELECT id FROM menu_master WHERE menu_name = 'HR Module' AND parent_id IS NULL LIMIT 1
+)
+INSERT INTO menu_master (parent_id, menu_name, link, icon, parent_rank, child_rank)
+SELECT hr_parent.id, child.menu_name, child.link, child.icon, 5, child.child_rank
+FROM hr_parent
+CROSS JOIN (VALUES
+    ('Employee Master',        '/hr/employee-master',        'pi pi-fw pi-id-card',      1),
+    ('Employee Bank Details',  '/hr/employee-bank-details',  'pi pi-fw pi-credit-card',  2),
+    ('Employee Leaves',        '/hr/employee-leaves',        'pi pi-fw pi-calendar',     3),
+    ('Employee Leave Balance', '/hr/employee-leave-balance', 'pi pi-fw pi-chart-bar',    4),
+    ('Employee Expenses',      '/hr/employee-expenses',      'pi pi-fw pi-dollar',       5),
+    ('Employee Salary Master', '/hr/employee-salary-master', 'pi pi-fw pi-money-bill',   6),
+    ('Company News',           '/hr/company-news',           'pi pi-fw pi-megaphone',    7)
+) AS child(menu_name, link, icon, child_rank)
+WHERE NOT EXISTS (
+    SELECT 1 FROM menu_master WHERE menu_name = child.menu_name
+);
+
+-- 3. Grant full access to all admin users (role_id = 1) for any new HR menu items
+INSERT INTO menu_permission (designation_id, menu_id, add_opt, edit_opt, view_opt, delete_opt, user_id, is_active, created_by, created_date)
+SELECT
+    um.designation_id,
+    mm.id,
+    1, 1, 1, 1,
+    um.id,
+    1,
+    um.id,
+    NOW()
+FROM menu_master mm
+CROSS JOIN users_master um
+WHERE mm.link LIKE '/hr/%'
+  AND um.role_id = 1
+  AND um.account_block = FALSE
+  AND NOT EXISTS (
+      SELECT 1 FROM menu_permission mp
+      WHERE mp.menu_id = mm.id AND mp.user_id = um.id
+  );

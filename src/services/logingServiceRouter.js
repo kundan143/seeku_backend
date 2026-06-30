@@ -1,18 +1,19 @@
 const express = require("express");
 const routers = express.Router();
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const lo = require("lodash");
 const jwt = require("jsonwebtoken");
 const mt = require("moment-timezone");
-process.env.SECRET_KEY = "secret";
 const logger = require("./dailyLogService");
 const { Sequelize, Model, DataTypes, QueryTypes } = require("sequelize");
 const { responseCodes } = require("./baseReponse");
 const { sequelize } = require("../config/database-connection");
-const sendForgotPasswordMail = require("./sendForgotPasswordMail");
+const sendOtpMail = require("./sendOtpMail");
 const { usersMaster } = require("../models");
 
 const SALT_ROUNDS = 12;
+const OTP_EXPIRY_MINUTES = 15;
 
 routers.post("/user_login", async (req, res) => {
   try {
@@ -52,12 +53,13 @@ routers.post("/user_login", async (req, res) => {
           let menuPermissionSQL = `SELECT mm.*, mm.id as mm_id, mp.*, mp.id as mp_id
                                         FROM menu_master AS mm
                                         LEFT JOIN menu_permission AS mp ON mp.menu_id = mm.id
-                                        WHERE mp.designation_id = ${designationId} AND  mp.user_id = ${userId}
+                                        WHERE mp.designation_id = :designationId AND mp.user_id = :userId
                                         AND mp.view_opt = 1
                                         ORDER BY mm.parent_rank ASC, mm.child_rank ASC;`;
 
           const result = await sequelize.query(menuPermissionSQL, {
             type: QueryTypes.SELECT,
+            replacements: { designationId, userId },
           });
           let parents_arr = result.filter((o) => o.parent_id == null);
           let menu_details = recursion(parents_arr, result);
@@ -121,81 +123,100 @@ routers.post("/user_login", async (req, res) => {
   }
 });
 
-routers.post("/forgot_password", async (req, res) => {
+routers.post("/forgot_password_request", async (req, res) => {
   try {
-    const { email, password } = req.body;
-
+    const { email } = req.body;
     if (!email) {
-      return res.status(400).json({ success: false, message: "Email are required." });
-    }
-    if (!password) {
-      return res.status(400).json({ success: false, message: "password are required." });
+      return res.status(400).json({ success: false, message: "Email is required." });
     }
 
-    // Find user by email
-    const user = await usersMaster.findOne({
-      where: { email: email },
-    });
-
+    const user = await usersMaster.findOne({ where: { email, status: true } });
     if (!user) {
-      return res.status(404).json({ success: false, message: "Email does not exist." });
+      // Return success to avoid user enumeration
+      return res.status(200).json({ success: true, message: "If that email exists, an OTP has been sent." });
     }
 
-    // Hash new password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // Update password
-    await usersMaster.update({password: hashedPassword},
-      {
-        where: {email: email,},
-      },
+    await usersMaster.update(
+      { reset_otp: otp, reset_otp_expiry: expiry },
+      { where: { id: user.id } }
     );
 
+    await sendOtpMail(email, otp, OTP_EXPIRY_MINUTES);
+    logger.info(`OTP sent for password reset: ${email}`);
+    return res.status(200).json({ success: true, message: "If that email exists, an OTP has been sent." });
+  } catch (error) {
+    logger.error(`forgot_password_request error: ${error.message}`);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+routers.post("/forgot_password", async (req, res) => {
+  try {
+    const { email, otp, password } = req.body;
+
+    if (!email || !otp || !password) {
+      return res.status(400).json({ success: false, message: "Email, OTP, and new password are required." });
+    }
+
+    const user = await usersMaster.findOne({ where: { email, status: true } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const data = user.dataValues;
+    if (!data.reset_otp || data.reset_otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP." });
+    }
+    if (!data.reset_otp_expiry || new Date() > new Date(data.reset_otp_expiry)) {
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+    await usersMaster.update(
+      { password: hashedPassword, reset_otp: null, reset_otp_expiry: null, account_block: false, incorrect_password_attempts: 0, last_password_modified: new Date() },
+      { where: { id: data.id } }
+    );
+
+    logger.info(`Password reset successful for: ${email}`);
     return res.status(200).json({ success: true, message: "Password updated successfully." });
   } catch (error) {
-    console.error(error);
+    logger.error(`forgot_password error: ${error.message}`);
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 routers.post("/register", async (req, res) => {
   try {
-    if (req.body && req.body.email && req.body.password) {
-      const email = req.body.email;
-      const password = req.body.password;
-
-      // Strong bcrypt hash
-      const hash = await bcrypt.hash(password, SALT_ROUNDS);
-
-      // let db_password = "Kundan@8383"
-      // const salt = bcrypt.genSaltSync(12);
-      // const hash = bcrypt.hashSync(db_password, salt);
-      // Save hash to DB
-
-      // Login
-      // const resBcrypt = await bcrypt.compare(password, hash);
-      // Use await for bcrypt.compare
-      // Save email and hash to DB (example, adjust for your ORM)
-      await usersMaster.create({
-        email,
-        password: hash,
-        designation_id: 2,
-        mobile: 861234567890,
-        username: "aaa",
-        first_name: "John",
-        last_name: "Doe",
-        designation_id, // <-- Now provided from request
-        status: 1,
-        incorrect_password_attempts: 0,
-        account_block: false,
-        sidebar_lock: false,
-      });
-      logger.info(`User registered: ${email}`);
-      return res.status(201).send({ message: "User registered successfully" });
-    } else {
-      logger.warn(`Invalid registration data`);
+    const { email, password, first_name, last_name, mobile, username, designation_id, role_id } = req.body;
+    if (!email || !password || !first_name || !last_name || !mobile || !username || !designation_id || !role_id) {
       return res.status(400).send(responseCodes.BAD_REQUEST);
     }
+
+    const existing = await usersMaster.findOne({ where: { email } });
+    if (existing) {
+      return res.status(409).send({ message: "Email already registered" });
+    }
+
+    const hash = await bcrypt.hash(password, SALT_ROUNDS);
+    await usersMaster.create({
+      email,
+      password: hash,
+      first_name,
+      last_name,
+      mobile,
+      username,
+      designation_id,
+      role_id,
+      status: true,
+      incorrect_password_attempts: 0,
+      account_block: false,
+      sidebar_lock: false,
+      created_date: new Date(),
+    });
+    logger.info(`User registered: ${email}`);
+    return res.status(201).send({ message: "User registered successfully" });
   } catch (e) {
     logger.error(`Registration error: ${e.message}`);
     return res.status(500).send(responseCodes.INTERNAL_SERVER_ERROR);
@@ -237,25 +258,24 @@ function recursion(get_parents, arr) {
   return final_arr;
 }
 
-function getlink(designation_id, user_id) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      let sql = `select mm.id as menu_id, mm.menu_name,mm.link,lm.link_name from menu_master as mm 
-        left join link_master as lm on mm.id=lm.menu_id 
-        left join link_permission as lp on lm.id=lp.link_id 
-        where  lp.designation_id=${designation_id} AND lp.user_id = ${user_id}`;
-      const linkResults = await sequelize.query(sql, {
-        type: QueryTypes.SELECT,
-      });
-      let result = groupBy(linkResults, (item) => {
-        return [item.link];
-      });
-      resolve(result);
-    } catch (e) {
-      logger.error(`Error fetching links: ${e.message}`);
-      resolve([]);
-    }
-  });
+async function getlink(designation_id, user_id) {
+  try {
+    let sql = `select mm.id as menu_id, mm.menu_name,mm.link,lm.link_name from menu_master as mm
+        left join link_master as lm on mm.id=lm.menu_id
+        left join link_permission as lp on lm.id=lp.link_id
+        where lp.designation_id = :designation_id AND lp.user_id = :user_id`;
+    const linkResults = await sequelize.query(sql, {
+      type: QueryTypes.SELECT,
+      replacements: { designation_id, user_id },
+    });
+    let result = groupBy(linkResults, (item) => {
+      return [item.link];
+    });
+    return result;
+  } catch (e) {
+    logger.error(`Error fetching links: ${e.message}`);
+    return [];
+  }
 }
 
 function groupBy(array, f) {
