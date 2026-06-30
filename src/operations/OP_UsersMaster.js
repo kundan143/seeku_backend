@@ -452,3 +452,22 @@ exports.getCompanyHierarchy = async function (id) {
     return responseCodes.BAD_REQUEST;
   }
 };
+exports.getEmpName = async function (id) {
+  try {
+    let query = {};
+    query = `select um.id, concat(um.first_name, ' ', um.last_name) as name
+              from users_master as um
+              WHERE um.status = true
+              ORDER BY um.id DESC;`;
+    const data = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};

@@ -17,6 +17,7 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       references: { model: "bank_master", key: "id" },
     },
+    branch_name: { type: DataTypes.STRING(255), allowNull: true, defaultValue:'UNKNOWN' },
     account_number: { type: DataTypes.STRING(255), allowNull: false },
     ifsc_code: { type: DataTypes.STRING(255), allowNull: false },
     created_by: {

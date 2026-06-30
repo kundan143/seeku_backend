@@ -58,5 +58,8 @@ router.post('/permissionUser', async (req, res, next) => {
 router.post('/getCompanyHierarchy', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.getCompanyHierarchy(req.body.user_id));
 });
+router.get('/getEmpName', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.getEmpName());
+});
 
 module.exports = router;

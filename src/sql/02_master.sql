@@ -543,6 +543,7 @@ CREATE TABLE users_bank_details (
     bank_id INTEGER NOT NULL REFERENCES bank_master(id),         -- Reference to master bank table
     account_number VARCHAR(50) NOT NULL,                         -- Employee bank account number
     ifsc_code VARCHAR(20) NOT NULL,                              -- IFSC code for the bank branch
+    branch_name VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',          --  Branch name
 
     -- Audit columns
     created_by INTEGER NOT NULL REFERENCES users_master(id),      -- User who created this record
