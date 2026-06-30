@@ -38,6 +38,7 @@ m.subjectMaster = require("../subject_master")(sequelize, DataTypes);
 m.feeTypeMaster = require("../fee_type_master")(sequelize, DataTypes);
 m.newsTypeMaster = require("../news_type_master")(sequelize, DataTypes);
 m.priorityMaster = require("../priority_master")(sequelize, DataTypes);
+m.emailTemplateMaster = require("../email_template_master")(sequelize, DataTypes);
 
 // Relations
 // m.usersMaster.belongsTo(dt.roleMaster, { foreignKey: 'role_id' });
@@ -110,6 +111,11 @@ m.expenseTypeMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey
 m.priorityMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.priorityMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
 m.priorityMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.emailTemplateMaster.belongsTo(m.departmentMaster, { foreignKey: 'department_id' });
+m.emailTemplateMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.emailTemplateMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.emailTemplateMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
 
 m.newsTypeMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.newsTypeMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
