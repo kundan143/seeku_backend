@@ -215,19 +215,21 @@ exports.updatePassword = async function (body) {
 
 exports.deleteData = async function (body) {
   try {
-    await usersMaster.destroy({
-      where: {
-        id: body.id,
-      },
+    console.log(body,"kundan")
+    if (!body?.id) {
+      return { ...responseCodes.BAD_REQUEST, message: "Missing id" };
+    }
+
+    const [affectedRows] = await usersMaster.update(body.data, {
+      where: { id: body.id },
     });
-    responseCodes.SUCCESS.data = null;
-    // addActivityLog(usersMaster.tableName, body.id, body, "DELETE");
-    responseCodes.SUCCESS.message = "Row Deleted Successfully";
-    return responseCodes.SUCCESS;
+
+    if (affectedRows === 0) {
+      return { ...responseCodes.BAD_REQUEST, message: "No row found to update" };
+    }
+    return {...responseCodes.SUCCESS,data: null,message: "Row Updated Successfully",};
   } catch (e) {
-    responseCodes.BAD_REQUEST.data = e;
-    responseCodes.BAD_REQUEST.message = "Failed to Delete Row";
-    return responseCodes.BAD_REQUEST;
+    return {...responseCodes.BAD_REQUEST,data: e,message: "Failed to Update Row"};
   }
 };
 
@@ -236,7 +238,7 @@ exports.getAllData = async function (body) {
     let status = ``;
 
     if (body.status == 0) {
-      status = `WHERE account_block = false`;
+      status = `WHERE account_block = false AND um.status = true`;
     } else if (body.status == 1) {
       status = `WHERE account_block = true`;
     } else {

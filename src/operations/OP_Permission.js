@@ -163,7 +163,7 @@ exports.getPermissions = async function (body) {
         return responseCodes.SUCCESS;
 
     } catch (e) {
-        console.error(e);
+        
         responseCodes.BAD_REQUEST.data = e;
         responseCodes.BAD_REQUEST.message = "Failed to load data.";
         return responseCodes.BAD_REQUEST;

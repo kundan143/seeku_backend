@@ -7,11 +7,13 @@ const h = {};
 h.emergencyContacts = require("../emergency_contacts")(sequelize, DataTypes);
 h.usersBankDetails = require("../users_bank_details")(sequelize, DataTypes);
 h.usersSalaryDetails = require("../users_salary_details")(sequelize, DataTypes);
+h.salaryPayment = require("../salary_payment")(sequelize, DataTypes);
 h.userLeavesDetails = require("../users_leave_details")(sequelize, DataTypes);
 h.employeeExpenses = require("../employee_expense")(sequelize, DataTypes);
 h.holidaysMaster = require("../holidays_master")(sequelize, DataTypes);
 h.companyNewsMaster = require("../company_news")(sequelize, DataTypes);
 h.userLeaveBalance = require("../user_leave_balance")(sequelize, DataTypes);
+h.userDocumentMaster = require("../user_document_master")(sequelize, DataTypes);
 
 
 h.emergencyContacts.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
@@ -27,6 +29,12 @@ h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
+
+h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
+h.salaryPayment.belongsTo(h.usersSalaryDetails, { foreignKey: 'salary_detail_id' });
+h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
+h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
+h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
 
 
 h.userLeavesDetails.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
@@ -61,6 +69,11 @@ h.userLeaveBalance.belongsTo(m.leaveTypeMaster, { foreignKey: 'leave_type_id' })
 h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
 h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'updated_by' });
 h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
+
+h.userDocumentMaster.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
+h.userDocumentMaster.belongsTo(m.usersMaster, { as: 'created_by_user',  foreignKey: 'created_by' });
+h.userDocumentMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+h.userDocumentMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user',  foreignKey: 'deleted_by' });
 
 
 

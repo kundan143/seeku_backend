@@ -21,7 +21,7 @@ exports.addData = async function (body) {
     return responseCodes.SUCCESS;
   } catch (e) {
     await t.rollback(); // ❌ Rollback on failure
-    console.error(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Leave";
     return responseCodes.BAD_REQUEST;
@@ -43,7 +43,7 @@ exports.updateData = async function (body) {
     return responseCodes.SUCCESS;
   } catch (e) {
     await t.rollback();
-    console.error(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Leave";
     return responseCodes.BAD_REQUEST;
@@ -151,7 +151,7 @@ exports.deleteData = async function (body) {
     return responseCodes.SUCCESS;
   } catch (e) {
     await t.rollback();
-    console.error(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Delete Leave";
     return responseCodes.BAD_REQUEST;
@@ -197,7 +197,7 @@ exports.getAllData = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.error(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;

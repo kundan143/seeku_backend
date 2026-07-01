@@ -1,5 +1,5 @@
 module.exports = function (sequelize, DataTypes) {
-    let table_name = 'users_salary_details';
+    let table_name = 'salary_payments';
     let columns = {
         id: {
             autoIncrement: true,
@@ -10,23 +10,28 @@ module.exports = function (sequelize, DataTypes) {
         user_id: {
             type: DataTypes.BIGINT,
             allowNull: true,
-            references: {
-                model: 'users_master',
-                key: 'id'
-            }
+            references: { model: 'users_master', key: 'id' }
         },
         other_user_name: {
             type: DataTypes.STRING(255),
             allowNull: true
         },
-        ctc: {
-            type: DataTypes.DECIMAL(12, 2),
+        salary_detail_id: {
+            type: DataTypes.BIGINT,
             allowNull: true,
-            defaultValue: 0.00
+            references: { model: 'users_salary_details', key: 'id' }
+        },
+        payment_month: {
+            type: DataTypes.SMALLINT,
+            allowNull: false
+        },
+        payment_year: {
+            type: DataTypes.SMALLINT,
+            allowNull: false
         },
         basic_salary: {
             type: DataTypes.DECIMAL(12, 2),
-            allowNull: false,
+            allowNull: true,
             defaultValue: 0.00
         },
         dearness_allowance: {
@@ -41,7 +46,7 @@ module.exports = function (sequelize, DataTypes) {
         },
         hra: {
             type: DataTypes.DECIMAL(12, 2),
-            allowNull: false,
+            allowNull: true,
             defaultValue: 0.00
         },
         conveyance: {
@@ -71,7 +76,7 @@ module.exports = function (sequelize, DataTypes) {
         },
         pf_employee: {
             type: DataTypes.DECIMAL(12, 2),
-            allowNull: false,
+            allowNull: true,
             defaultValue: 0.00
         },
         professional_tax: {
@@ -114,14 +119,6 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true,
             defaultValue: 0.00
         },
-        effective_from: {
-            type: DataTypes.DATEONLY,
-            allowNull: true
-        },
-        pay_frequency: {
-            type: DataTypes.STRING(255),
-            allowNull: true
-        },
         gross_salary: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true,
@@ -137,6 +134,42 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true,
             defaultValue: 0.00
         },
+        working_days: {
+            type: DataTypes.SMALLINT,
+            allowNull: true,
+            defaultValue: 0
+        },
+        present_days: {
+            type: DataTypes.DECIMAL(5, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        paid_days: {
+            type: DataTypes.DECIMAL(5, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        payment_mode: {
+            type: DataTypes.STRING(50),
+            allowNull: true
+        },
+        payment_date: {
+            type: DataTypes.DATEONLY,
+            allowNull: true
+        },
+        transaction_ref: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        remarks: {
+            type: DataTypes.TEXT,
+            allowNull: true
+        },
+        payment_status: {
+            type: DataTypes.SMALLINT,
+            allowNull: false,
+            defaultValue: 0
+        },
         status: {
             type: DataTypes.SMALLINT,
             allowNull: false,
@@ -145,10 +178,7 @@ module.exports = function (sequelize, DataTypes) {
         created_by: {
             type: DataTypes.BIGINT,
             allowNull: true,
-            references: {
-                model: 'users_master',
-                key: 'id'
-            }
+            references: { model: 'users_master', key: 'id' }
         },
         created_date: {
             type: DataTypes.DATE,
@@ -157,10 +187,7 @@ module.exports = function (sequelize, DataTypes) {
         modified_by: {
             type: DataTypes.BIGINT,
             allowNull: true,
-            references: {
-                model: 'users_master',
-                key: 'id'
-            }
+            references: { model: 'users_master', key: 'id' }
         },
         modified_date: {
             type: DataTypes.DATE,
@@ -169,19 +196,20 @@ module.exports = function (sequelize, DataTypes) {
         deleted_by: {
             type: DataTypes.BIGINT,
             allowNull: true,
-            references: {
-                model: 'users_master',
-                key: 'id'
-            }
+            references: { model: 'users_master', key: 'id' }
         },
         deleted_date: {
             type: DataTypes.DATE,
             allowNull: true
         },
+        slip_url: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
     };
     let optional = {
         sequelize,
-        tableName: 'users_salary_details',
+        tableName: 'salary_payments',
         schema: 'public',
         timestamps: false
     };

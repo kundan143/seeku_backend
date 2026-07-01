@@ -150,7 +150,6 @@ exports.getOneData = async function (employee_id) {
         return responseCodes.NOT_FOUND;
     }
 } catch (e) {
-    console.error("Error in getOneData:", e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to load data";
     return responseCodes.BAD_REQUEST;

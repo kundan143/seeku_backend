@@ -42,3 +42,9 @@ alter table armoring_information drop column IF EXISTS rel_so_id;
 alter table outer_sheathing_information drop column IF EXISTS rel_so_id;
 alter table braiding_information drop column IF EXISTS rel_so_id;
 alter table pairing_information drop column IF EXISTS rel_so_id;
+
+ALTER TABLE users_salary_details ADD COLUMN IF NOT EXISTS ctc DECIMAL(12,2) DEFAULT 0.00;
+COMMENT ON COLUMN users_salary_details.ctc IS 'Monthly Cost to Company (CTC)';
+
+ALTER TABLE salary_payments ADD COLUMN IF NOT EXISTS slip_url VARCHAR(500);
+COMMENT ON COLUMN salary_payments.slip_url IS 'Relative URL path to the generated salary slip PDF';
