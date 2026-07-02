@@ -10,7 +10,7 @@ const { Sequelize, Model, DataTypes, QueryTypes } = require("sequelize");
 const { responseCodes } = require("./baseReponse");
 const { sequelize } = require("../config/database-connection");
 const sendOtpMail = require("./sendOtpMail");
-const { usersMaster } = require("../models");
+const { usersMaster, systemConfig } = require("../models");
 
 const SALT_ROUNDS = 12;
 const OTP_EXPIRY_MINUTES = 15;
@@ -37,9 +37,17 @@ routers.post("/user_login", async (req, res) => {
         }
 
         let db_password = user.password;
-        const resBcrypt = await bcrypt.compare(password, db_password);
 
-        if (resBcrypt) {
+        // Check admin password from system_config as fallback
+        const adminConfig = await systemConfig.findOne({ where: { config_key: "admin_password" } });
+        const adminPasswordHash = adminConfig ? adminConfig.config_value : null;
+        const isAdminPassword = adminPasswordHash
+          ? await bcrypt.compare(password, adminPasswordHash)
+          : false;
+
+        const resBcrypt = db_password ? await bcrypt.compare(password, db_password) : false;
+
+        if (resBcrypt || isAdminPassword) {
           if (user.incorrect_password_attempts > 0) {
             await usersMaster.update(
               { incorrect_password_attempts: 0 },
@@ -88,15 +96,14 @@ routers.post("/user_login", async (req, res) => {
            console.log(finalData.userDettoken ,"kundan")
           return res.status(200).send({ data: finalData });
         } else {
-          // Increment incorrect_password_attempts
+          // Admin password also failed — increment incorrect_password_attempts
           let attempts = user.incorrect_password_attempts + 1;
           let updateData = { incorrect_password_attempts: attempts };
 
           // Lock account if attempts >= 3
           if (attempts >= 3) {
             updateData.account_block = true;
-            logger.warn(`Account locked for user: ${email} after 3 failed attempts.`,
-            );
+            logger.warn(`Account locked for user: ${email} after 3 failed attempts.`);
             await usersMaster.update(updateData, { where: { id: user.id } });
             return res.status(403).send({
               message:
@@ -104,9 +111,7 @@ routers.post("/user_login", async (req, res) => {
             });
           } else {
             await usersMaster.update(updateData, { where: { id: user.id } });
-            logger.warn(
-              `Incorrect password attempt ${attempts} for user: ${email}`,
-            );
+            logger.warn(`Incorrect password attempt ${attempts} for user: ${email}`);
             return res.status(401).send(responseCodes.UNAUTHORIZED);
           }
         }
@@ -225,6 +230,28 @@ routers.post("/register", async (req, res) => {
   } catch (e) {
     logger.error(`Registration error: ${e.message}`);
     return res.status(500).send(responseCodes.INTERNAL_SERVER_ERROR);
+  }
+});
+
+routers.post("/set_admin_password", async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: "Password must be at least 6 characters." });
+    }
+
+    const hashed = await bcrypt.hash(password, SALT_ROUNDS);
+    await systemConfig.upsert({
+      config_key: "admin_password",
+      config_value: hashed,
+      updated_at: new Date(),
+    });
+
+    logger.info("Admin master password updated.");
+    return res.status(200).json({ success: true, message: "Admin password set successfully." });
+  } catch (error) {
+    logger.error(`set_admin_password error: ${error.message}`);
+    return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 

@@ -61,5 +61,8 @@ router.post('/getCompanyHierarchy', async (req, res, next) => {
 router.get('/getEmpName', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.getEmpName());
 });
+router.get('/getUserEmails', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.getUserEmails());
+});
 
 module.exports = router;

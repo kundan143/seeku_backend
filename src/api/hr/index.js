@@ -11,4 +11,5 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_hr + '/employeeSalaryDetails', jwt, require('../hr/usersSalaryDetailsAPI'));
     app.use(ROOT_BASE_URL_hr + '/salaryPayment', jwt, require('../hr/salaryPaymentAPI'));
     app.use(ROOT_BASE_URL_hr + '/userDocumentMaster', jwt, require('../hr/userDocumentMasterAPI'));
+    app.use(ROOT_BASE_URL_hr + '/candidates', jwt, require('../hr/candidatesAPI'));
 };

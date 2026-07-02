@@ -482,3 +482,20 @@ exports.getEmpName = async function (id) {
     return responseCodes.BAD_REQUEST;
   }
 };
+
+exports.getUserEmails = async function () {
+  try {
+    const query = `SELECT um.id, CONCAT(um.first_name, ' ', um.last_name) AS name, um.email
+                   FROM users_master AS um
+                   WHERE um.status = true AND um.email IS NOT NULL AND um.email != ''
+                   ORDER BY um.first_name ASC`;
+    const data = await sequelize.query(query, { type: sequelize.QueryTypes.SELECT });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};

@@ -61,7 +61,10 @@ router.post('/generateSlip', async (req, res, next) => {
 
 // 12 = Email Salary Slip to employee
 router.post('/emailSlip', async (req, res, next) => {
-    return res.send(await OP_salaryPayment.emailSlip(req.body.id, req.body.email));
+    return res.send(await OP_salaryPayment.emailSlip(req.body.id, req.body.emails || req.body.email));
+});
+router.post('/bulkEmailSlips', async (req, res, next) => {
+    return res.send(await OP_salaryPayment.bulkEmailSlips(req.body.ids));
 });
 
 module.exports = router;

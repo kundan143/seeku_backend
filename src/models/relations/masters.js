@@ -39,6 +39,7 @@ m.feeTypeMaster = require("../fee_type_master")(sequelize, DataTypes);
 m.newsTypeMaster = require("../news_type_master")(sequelize, DataTypes);
 m.priorityMaster = require("../priority_master")(sequelize, DataTypes);
 m.emailTemplateMaster = require("../email_template_master")(sequelize, DataTypes);
+m.systemConfig = require("../system_config")(sequelize, DataTypes);
 
 // Relations
 // m.usersMaster.belongsTo(dt.roleMaster, { foreignKey: 'role_id' });

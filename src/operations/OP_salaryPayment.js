@@ -591,8 +591,10 @@ exports.emailSlip = async function (id, toEmail) {
     }
     const sp = rows[0];
 
-    // Resolve email — prefer explicitly passed address, then employee record
-    const recipient = toEmail || sp.emp_email;
+    // Resolve email — support array (multi-select) or single string, then fall back to employee record
+    const resolved = Array.isArray(toEmail) ? toEmail.join(', ') : (toEmail || sp.emp_email);
+    const recipient = resolved;
+    console.log("Resolved recipient email:", recipient);
     if (!recipient) {
       responseCodes.BAD_REQUEST.data = null;
       responseCodes.BAD_REQUEST.message = "No email address found for this employee";
@@ -648,6 +650,31 @@ exports.emailSlip = async function (id, toEmail) {
     responseCodes.BAD_REQUEST.message = "Failed to send salary slip email";
     return responseCodes.BAD_REQUEST;
   }
+};
+
+exports.bulkEmailSlips = async function (ids) {
+  const sent = [], failed = [];
+  for (const id of ids) {
+    try {
+      const res = await exports.emailSlip(id, null);
+      if (res.code === '100') {
+        sent.push(id);
+      } else {
+        failed.push({ id, reason: res.message });
+      }
+    } catch (e) {
+      failed.push({ id, reason: e.message });
+    }
+  }
+  const data = { sent, failed };
+  if (sent.length === 0) {
+    responseCodes.BAD_REQUEST.data = data;
+    responseCodes.BAD_REQUEST.message = `Failed to send all ${ids.length} slip(s)`;
+    return responseCodes.BAD_REQUEST;
+  }
+  responseCodes.SUCCESS.data = data;
+  responseCodes.SUCCESS.message = `Sent ${sent.length} slip(s) successfully${failed.length ? `, ${failed.length} failed` : ''}`;
+  return responseCodes.SUCCESS;
 };
 
 exports.getDataByMonthYear = async function (payment_month, payment_year) {
