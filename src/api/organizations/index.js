@@ -1,9 +1,11 @@
 const ROOT_BASE_URL_ORGANIZATION = '/api/organization';
 
+const apiActivityLogger = require("../../services/apiActivityLogger");
+
 module.exports = async (app, jwt) => {
-	app.use(ROOT_BASE_URL_ORGANIZATION + '/organizationsMaster', jwt, require('../organizations/organizationsMasterAPI'));
-	app.use(ROOT_BASE_URL_ORGANIZATION + '/orgCategoriesMaster', jwt ,require('../organizations/orgCategoriesMasterAPI'));
-	app.use(ROOT_BASE_URL_ORGANIZATION + '/relOrgCategories', jwt ,require('../organizations/relOrgCategoriesAPI'));
+	app.use(ROOT_BASE_URL_ORGANIZATION + '/organizationsMaster', jwt, apiActivityLogger, require('../organizations/organizationsMasterAPI'));
+	app.use(ROOT_BASE_URL_ORGANIZATION + '/orgCategoriesMaster', jwt ,apiActivityLogger, require('../organizations/orgCategoriesMasterAPI'));
+	app.use(ROOT_BASE_URL_ORGANIZATION + '/relOrgCategories', jwt ,apiActivityLogger, require('../organizations/relOrgCategoriesAPI'));
 	// app.use(ROOT_BASE_URL_ORGANIZATION + '/orgAddresses', jwt ,log, require('../organizations/orgAddressesAPI'));
 	// app.use(ROOT_BASE_URL_ORGANIZATION + '/orgBankMaster', jwt ,log, require('../organizations/orgBankMasterAPI'));
 	// app.use(ROOT_BASE_URL_ORGANIZATION + '/orgContactPerson', jwt ,log, require('../organizations/orgContactPersonAPI'));

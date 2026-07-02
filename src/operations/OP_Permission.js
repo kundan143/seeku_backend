@@ -33,6 +33,10 @@ exports.addData = async function (body) {
         edit_opt,
         view_opt,
         delete_opt,
+        excel_opt,
+        pdf_opt,
+        approve_opt,
+        mailsent_opt,
         designation_id,
         created_by,
         modified_by,
@@ -47,7 +51,11 @@ exports.addData = async function (body) {
           existing.add_opt !== add_opt ||
           existing.edit_opt !== edit_opt ||
           existing.view_opt !== view_opt ||
-          existing.delete_opt !== delete_opt;
+          existing.delete_opt !== delete_opt ||
+          existing.excel_opt !== excel_opt ||
+          existing.pdf_opt !== pdf_opt ||
+          existing.approve_opt !== approve_opt ||
+          existing.mailsent_opt !== mailsent_opt;
 
         if (hasChanges) {
           await existing.update({
@@ -55,6 +63,10 @@ exports.addData = async function (body) {
             edit_opt,
             view_opt,
             delete_opt,
+            excel_opt,
+            pdf_opt,
+            approve_opt,
+            mailsent_opt,
             modified_by,
             modified_date: new Date(),
           });
@@ -70,6 +82,10 @@ exports.addData = async function (body) {
           edit_opt,
           view_opt,
           delete_opt,
+          excel_opt,
+          pdf_opt,
+          approve_opt,
+          mailsent_opt,
           designation_id,
           created_by,
           created_date: new Date(),
@@ -136,9 +152,10 @@ exports.deleteData = async function (body) {
 
 exports.getPermissions = async function (body) {
     try {
-      const menuQuery = `SELECT  mm.id, mm.parent_id, mm.menu_name,
-                        mm.child_rank,mp.user_id,mp.add_opt,mp.edit_opt, mp.delete_opt, 
-                        mp.view_opt, mp.designation_id, mp.is_active, mm.id as menu_id
+      const menuQuery = `SELECT  mm.id, mm.parent_id, mm.menu_name, mm.icon,
+                        mm.child_rank,mp.user_id,mp.add_opt,mp.edit_opt, mp.delete_opt,
+                        mp.view_opt, mp.excel_opt, mp.pdf_opt, mp.approve_opt, mp.mailsent_opt,
+                        mp.designation_id, mp.is_active, mm.id as menu_id
                         FROM menu_master mm
                         LEFT JOIN menu_permission mp ON mp.menu_id = mm.id
                         WHERE (mp.user_id = ${body.emp_id} OR mp.user_id IS NULL)

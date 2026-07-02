@@ -8,6 +8,7 @@ dt.menuMaster = require("../menu_master")(sequelize, DataTypes);
 dt.menuPermission = require("../menu_permission")(sequelize, DataTypes);
 dt.linkPermission = require("../link_permission")(sequelize, DataTypes);
 dt.linkMaster = require("../link_master")(sequelize, DataTypes);
+dt.userActivityLog = require("../user_activity_log")(sequelize, DataTypes);
 
 
 dt.menuPermission.belongsTo(m.usersMaster, { foreignKey: "created_by" });
@@ -22,6 +23,8 @@ dt.linkPermission.belongsTo(m.usersMaster, { foreignKey: "user_id" });
 dt.linkPermission.belongsTo(m.designationMaster, { foreignKey: "designation_id" });
 
 dt.linkMaster.belongsTo(dt.menuMaster, { foreignKey: "menu_id" });
+
+dt.userActivityLog.belongsTo(m.usersMaster, { foreignKey: "user_id" });
 
 
 module.exports = dt;

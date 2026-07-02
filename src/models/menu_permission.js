@@ -21,6 +21,10 @@ module.exports = function (sequelize, DataTypes) {
     edit_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     view_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     delete_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    excel_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+    pdf_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+    approve_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+    mailsent_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     designation_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
