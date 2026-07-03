@@ -5,7 +5,7 @@ const {
 } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
-const { Op, where, DATE } = require("sequelize");
+const { Op, where, DATE, QueryTypes } = require("sequelize");
 
 exports.addData = async function (body) {
   const t = await sequelize.transaction();
@@ -244,4 +244,41 @@ exports.getOneData = async function (id) {
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
   }
+};
+
+// Approved-leave day totals per user overlapping [monthStart, monthEnd] ('YYYY-MM-DD'),
+// bucketed by leave_code: LOP -> lop_days, HPL -> hpl_days, everything else -> other_leave_days.
+// Internal cross-module helper for payroll — throws on error, not wrapped in responseCodes.
+exports.getLeaveDaysSummary = async function (monthStart, monthEnd, userIds = null) {
+  const query = `
+    SELECT
+      uld.user_id,
+      ltm.leave_code,
+      SUM(
+        (LEAST(uld.end_date, :monthEnd::date) - GREATEST(uld.start_date, :monthStart::date)) + 1
+      )::numeric AS overlap_days
+    FROM users_leave_details uld
+    JOIN leave_type_master ltm ON ltm.id = uld.leave_type_id
+    WHERE uld.status = 1
+      AND uld.start_date <= :monthEnd::date
+      AND uld.end_date   >= :monthStart::date
+      ${userIds && userIds.length ? "AND uld.user_id IN (:userIds)" : ""}
+    GROUP BY uld.user_id, ltm.leave_code`;
+
+  const rows = await sequelize.query(query, {
+    replacements: { monthStart, monthEnd, userIds: userIds || [] },
+    type: QueryTypes.SELECT,
+  });
+
+  const map = {};
+  for (const r of rows) {
+    const uid = r.user_id;
+    if (!map[uid]) map[uid] = { lop_days: 0, hpl_days: 0, other_leave_days: 0 };
+    const days = Number(r.overlap_days) || 0;
+    const code = String(r.leave_code || "").trim().toUpperCase();
+    if (code === "LOP") map[uid].lop_days += days;
+    else if (code === "HPL") map[uid].hpl_days += days;
+    else map[uid].other_leave_days += days;
+  }
+  return map;
 };

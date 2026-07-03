@@ -122,6 +122,24 @@ module.exports = function (sequelize, DataTypes) {
             type: DataTypes.STRING(255),
             allowNull: true
         },
+        salary_type: {
+            type: DataTypes.SMALLINT,
+            allowNull: true,
+            defaultValue: 1
+        },
+        pair_id: {
+            type: DataTypes.BIGINT,
+            allowNull: true,
+            references: {
+                model: 'users_salary_details',
+                key: 'id'
+            }
+        },
+        tax_regime: {
+            type: DataTypes.SMALLINT,
+            allowNull: true,
+            defaultValue: 2
+        },
         gross_salary: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true,

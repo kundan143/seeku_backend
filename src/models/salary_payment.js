@@ -149,6 +149,11 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true,
             defaultValue: 0.00
         },
+        unapproved_leave_days: {
+            type: DataTypes.DECIMAL(5, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
         payment_mode: {
             type: DataTypes.STRING(50),
             allowNull: true

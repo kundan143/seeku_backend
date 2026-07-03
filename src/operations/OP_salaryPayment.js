@@ -1,11 +1,12 @@
 const { salaryPayment } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
-const { QueryTypes } = require("sequelize");
+const { QueryTypes, Op } = require("sequelize");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 const transporter = require("../services/mailTransporterService");
+const OP_usersLeave = require("./OP_usersLeave");
 
 exports.addData = async function (body) {
   const t = await sequelize.transaction();
@@ -64,13 +65,16 @@ exports.deleteData = async function (body) {
 exports.markAsPaid = async function (body) {
   const t = await sequelize.transaction();
   try {
+    const where = Array.isArray(body.id) ? { id: { [Op.in]: body.id } } : { id: body.id };
     await salaryPayment.update(body.data, {
-      where: { id: body.id },
+      where,
       transaction: t,
     });
     await t.commit();
     responseCodes.SUCCESS.data = null;
-    responseCodes.SUCCESS.message = "Salary Marked as Paid Successfully";
+    responseCodes.SUCCESS.message = Array.isArray(body.id)
+      ? `${body.id.length} Salary Payment(s) Marked as Paid Successfully`
+      : "Salary Marked as Paid Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
     await t.rollback();
@@ -202,66 +206,126 @@ async function getMonthWorkingDays(payment_month, payment_year) {
     public_holidays: nonSundayHolidays.length,
     working_days:    daysInMonth - sundaySet.size - nonSundayHolidays.length,
     holiday_list:    holidays,
+    start_date:      startDate,
+    end_date:        endDate,
   };
+}
+
+// Present/Paid days from working days + approved-leave breakdown + HR's manual unapproved/LOP input.
+// leave: { lop_days, hpl_days, other_leave_days } (all default 0 when the employee has no leave this month)
+function computeAttendance(workingDays, leave, manualUnapprovedLeaveDays) {
+  const lop    = Number(leave?.lop_days || 0);
+  const hpl    = Number(leave?.hpl_days || 0);
+  const other  = Number(leave?.other_leave_days || 0);
+  const manual = Number(manualUnapprovedLeaveDays || 0);
+
+  const present_days = Math.max(0, workingDays - lop - hpl - other);
+  const paid_days     = Math.max(0, workingDays - lop - (hpl * 0.5) - manual);
+
+  return { present_days, paid_days, lop_days: lop, hpl_days: hpl, other_leave_days: other };
+}
+
+function round2(n) { return Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100; }
+function clampRatio(paidDays, workingDays) {
+  return workingDays > 0 ? Math.max(0, Math.min(1, paidDays / workingDays)) : 1;
+}
+const EARNING_KEYS = ['basic_salary','dearness_allowance','city_allowance','hra','conveyance','medical_allowance','lta','special_allowance','bonus'];
+// Prorates each earning line by ratio and sums the already-rounded lines for gross_salary,
+// so an itemized earnings table always adds up exactly to the printed Gross Salary.
+function prorateEarnings(master, ratio) {
+  const fields = {};
+  let gross = 0;
+  EARNING_KEYS.forEach(k => { const v = round2(Number(master[k]) * ratio); fields[k] = v; gross += v; });
+  return { fields, gross_salary: round2(gross) };
 }
 
 exports.previewBulkPayroll = async function (payment_month, payment_year) {
   try {
     const query = `
-      SELECT
-        usd.id                                                     AS salary_detail_id,
-        usd.user_id,
-        COALESCE(CONCAT(um.first_name, ' ', um.last_name),
-                 usd.other_user_name)                              AS emp_name,
-        usd.other_user_name,
-        dm.name                                                    AS department_name,
-        dm2.designation                                            AS designation_name,
-        usd.basic_salary,
-        usd.dearness_allowance,
-        usd.city_allowance,
-        usd.hra,
-        usd.conveyance,
-        usd.medical_allowance,
-        usd.lta,
-        usd.special_allowance,
-        usd.bonus,
-        usd.pf_employee,
-        usd.professional_tax,
-        usd.income_tax,
-        usd.employee_state_insurance,
-        usd.loan_deduction,
-        usd.other_deduction,
-        usd.pf_employer,
-        usd.esi_employer,
-        usd.gratuity,
-        usd.gross_salary,
-        usd.total_deductions,
-        usd.net_salary,
+      SELECT usd.id AS salary_detail_id, usd.user_id, COALESCE(CONCAT(um.first_name, ' ', um.last_name),usd.other_user_name) AS emp_name, 
+      usd.other_user_name, dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance, 
+      usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.lta, usd.special_allowance, usd.bonus, usd.pf_employee, 
+      usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.loan_deduction, usd.other_deduction, usd.pf_employer, 
+      usd.esi_employer, usd.gratuity, usd.gross_salary, usd.total_deductions, usd.net_salary,
         CASE
           WHEN sp.id IS NOT NULL THEN TRUE
           ELSE FALSE
-        END                                                        AS already_processed,
-        sp.id                                                      AS existing_payment_id
+        END AS already_processed,
+        sp.id AS existing_payment_id
       FROM users_salary_details usd
-      LEFT JOIN users_master      um   ON um.id   = usd.user_id
-      LEFT JOIN department_master dm   ON dm.id   = um.department_id
+      LEFT JOIN users_master um ON um.id = usd.user_id
+      LEFT JOIN department_master dm ON dm.id = um.department_id
       LEFT JOIN designation_master dm2 ON dm2.id  = um.designation_id
-      LEFT JOIN salary_payments   sp  ON sp.salary_detail_id = usd.id
-                                     AND sp.payment_month    = :payment_month
-                                     AND sp.payment_year     = :payment_year
-                                     AND sp.status           = 1
-      WHERE usd.status = 1
+      LEFT JOIN salary_payments sp ON sp.salary_detail_id = usd.id
+      AND sp.payment_month = :payment_month AND sp.payment_year = :payment_year
+      AND sp.status = 1
+      WHERE usd.status = 1 AND um.status = TRUE
       ORDER BY dm.name, emp_name`;
     const [employees, monthInfo] = await Promise.all([
       sequelize.query(query, { replacements: { payment_month, payment_year }, type: QueryTypes.SELECT }),
       getMonthWorkingDays(payment_month, payment_year),
     ]);
-    responseCodes.SUCCESS.data = { employees, monthInfo };
+
+    const userIds = employees.map(e => e.user_id).filter(Boolean);
+    const leaveMap = userIds.length
+      ? await OP_usersLeave.getLeaveDaysSummary(monthInfo.start_date, monthInfo.end_date, userIds)
+      : {};
+
+    const employeesWithAttendance = employees.map(emp => {
+      const leave = emp.user_id ? leaveMap[emp.user_id] : null;
+      const att = computeAttendance(monthInfo.working_days, leave, 0);
+      const ratio = clampRatio(att.paid_days, monthInfo.working_days);
+      const { fields, gross_salary } = prorateEarnings(emp, ratio);
+      const total_deductions = Number(emp.total_deductions) || 0;
+      return {
+        ...emp,
+        ...fields,
+        gross_salary,
+        total_deductions,
+        net_salary:             round2(gross_salary - total_deductions),
+        master:                 { ...emp },
+        working_days:          monthInfo.working_days,
+        present_days:          att.present_days,
+        paid_days:             att.paid_days,
+        lop_days:              att.lop_days,
+        hpl_days:              att.hpl_days,
+        other_leave_days:      att.other_leave_days,
+        unapproved_leave_days: 0,
+      };
+    });
+
+    responseCodes.SUCCESS.data = { employees: employeesWithAttendance, monthInfo };
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Payroll Preview";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+exports.getLeaveSummary = async function (user_id, payment_month, payment_year) {
+  try {
+    const monthInfo = await getMonthWorkingDays(payment_month, payment_year);
+    let leave = { lop_days: 0, hpl_days: 0, other_leave_days: 0 };
+    if (user_id) {
+      const map = await OP_usersLeave.getLeaveDaysSummary(monthInfo.start_date, monthInfo.end_date, [user_id]);
+      leave = map[user_id] || leave;
+    }
+    const att = computeAttendance(monthInfo.working_days, leave, 0);
+    responseCodes.SUCCESS.data = {
+      working_days:     monthInfo.working_days,
+      present_days:     att.present_days,
+      paid_days:        att.paid_days,
+      lop_days:         att.lop_days,
+      hpl_days:         att.hpl_days,
+      other_leave_days: att.other_leave_days,
+    };
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Leave Summary";
     return responseCodes.BAD_REQUEST;
   }
 };
@@ -281,41 +345,90 @@ exports.processBulkPayroll = async function (body) {
     const monthInfo = await getMonthWorkingDays(payment_month, payment_year);
     const calculatedWorkingDays = monthInfo.working_days;
 
-    const records = employees.map(emp => ({
-      user_id:                  emp.user_id || null,
-      other_user_name:          emp.other_user_name || null,
-      salary_detail_id:         emp.salary_detail_id || null,
-      payment_month,
-      payment_year,
-      basic_salary:             emp.basic_salary             || 0,
-      dearness_allowance:       emp.dearness_allowance       || 0,
-      city_allowance:           emp.city_allowance           || 0,
-      hra:                      emp.hra                      || 0,
-      conveyance:               emp.conveyance               || 0,
-      medical_allowance:        emp.medical_allowance        || 0,
-      lta:                      emp.lta                      || 0,
-      special_allowance:        emp.special_allowance        || 0,
-      bonus:                    emp.bonus                    || 0,
-      pf_employee:              emp.pf_employee              || 0,
-      professional_tax:         emp.professional_tax         || 0,
-      income_tax:               emp.income_tax               || 0,
-      employee_state_insurance: emp.employee_state_insurance || 0,
-      loan_deduction:           emp.loan_deduction           || 0,
-      other_deduction:          emp.other_deduction          || 0,
-      pf_employer:              emp.pf_employer              || 0,
-      esi_employer:             emp.esi_employer             || 0,
-      gratuity:                 emp.gratuity                 || 0,
-      gross_salary:             emp.gross_salary             || 0,
-      total_deductions:         emp.total_deductions         || 0,
-      net_salary:               emp.net_salary               || 0,
-      working_days:             calculatedWorkingDays,
-      present_days:             emp.present_days             || calculatedWorkingDays,
-      paid_days:                emp.paid_days                || calculatedWorkingDays,
-      payment_status:           0,
-      status:                   1,
-      created_by,
-      created_date,
-    }));
+    // Earnings/gross/net are never trusted from the client — refetch the master salary
+    // structure fresh and recompute proration server-side, the same way working_days is.
+    const salaryDetailIds = employees.map(e => e.salary_detail_id).filter(Boolean);
+    const masterRows = salaryDetailIds.length
+      ? await sequelize.query(
+          `SELECT id, basic_salary, dearness_allowance, city_allowance, hra, conveyance,
+                  medical_allowance, lta, special_allowance, bonus, total_deductions,
+                  pf_employee, professional_tax, income_tax, employee_state_insurance,
+                  loan_deduction, other_deduction, pf_employer, esi_employer, gratuity
+           FROM users_salary_details WHERE id IN (:ids)`,
+          { replacements: { ids: salaryDetailIds }, type: QueryTypes.SELECT, transaction: t }
+        )
+      : [];
+    const masterMap = {};
+    masterRows.forEach(m => { masterMap[m.id] = m; });
+
+    const records = employees.map(emp => {
+      const master = masterMap[emp.salary_detail_id];
+
+      const presentDays = emp.present_days != null ? Number(emp.present_days) : calculatedWorkingDays;
+      const paidDaysRaw  = emp.paid_days    != null ? Number(emp.paid_days)    : calculatedWorkingDays;
+      const paidDays = Math.max(0, Math.min(calculatedWorkingDays, paidDaysRaw));
+      const ratio = clampRatio(paidDays, calculatedWorkingDays);
+
+      let earningFields, deductionFields, gross_salary, total_deductions, net_salary;
+      if (master) {
+        const prorated = prorateEarnings(master, ratio);
+        earningFields = prorated.fields;
+        gross_salary  = prorated.gross_salary;
+        total_deductions = Number(master.total_deductions) || 0;
+        net_salary    = round2(gross_salary - total_deductions);
+        deductionFields = {
+          pf_employee:              Number(master.pf_employee)              || 0,
+          professional_tax:         Number(master.professional_tax)         || 0,
+          income_tax:               Number(master.income_tax)               || 0,
+          employee_state_insurance: Number(master.employee_state_insurance) || 0,
+          loan_deduction:           Number(master.loan_deduction)           || 0,
+          other_deduction:          Number(master.other_deduction)          || 0,
+          pf_employer:              Number(master.pf_employer)              || 0,
+          esi_employer:             Number(master.esi_employer)             || 0,
+          gratuity:                 Number(master.gratuity)                 || 0,
+        };
+      } else {
+        // No linked master record found (unexpected for bulk payroll — every row originates
+        // from users_salary_details) — fall back to whatever the client sent as a last resort.
+        earningFields = {};
+        EARNING_KEYS.forEach(k => { earningFields[k] = Number(emp[k]) || 0; });
+        gross_salary = Number(emp.gross_salary) || 0;
+        total_deductions = Number(emp.total_deductions) || 0;
+        net_salary = Number(emp.net_salary) || 0;
+        deductionFields = {
+          pf_employee:              Number(emp.pf_employee)              || 0,
+          professional_tax:         Number(emp.professional_tax)         || 0,
+          income_tax:               Number(emp.income_tax)               || 0,
+          employee_state_insurance: Number(emp.employee_state_insurance) || 0,
+          loan_deduction:           Number(emp.loan_deduction)           || 0,
+          other_deduction:          Number(emp.other_deduction)          || 0,
+          pf_employer:              Number(emp.pf_employer)              || 0,
+          esi_employer:             Number(emp.esi_employer)             || 0,
+          gratuity:                 Number(emp.gratuity)                 || 0,
+        };
+      }
+
+      return {
+        user_id:                  emp.user_id || null,
+        other_user_name:          emp.other_user_name || null,
+        salary_detail_id:         emp.salary_detail_id || null,
+        payment_month,
+        payment_year,
+        ...earningFields,
+        ...deductionFields,
+        gross_salary,
+        total_deductions,
+        net_salary,
+        working_days:             calculatedWorkingDays,
+        present_days:             presentDays,
+        paid_days:                paidDays,
+        unapproved_leave_days:    Number(emp.unapproved_leave_days) || 0,
+        payment_status:           0,
+        status:                   1,
+        created_by,
+        created_date,
+      };
+    });
 
     await salaryPayment.bulkCreate(records, { transaction: t });
     await t.commit();
@@ -705,3 +818,23 @@ exports.getDataByMonthYear = async function (payment_month, payment_year) {
     return responseCodes.BAD_REQUEST;
   }
 };
+
+exports.getDataPaymentCompleted = async function (user_id) {
+  try {
+    const query = `
+      SELECT  SP.*,sp.payment_month, sp.payment_year,
+      TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
+      FROM salary_payments sp
+      WHERE sp.status = 1 and sp.payment_status = 1 and user_id = ${user_id}
+      ORDER BY sp.payment_month DESC`;
+    const data = await sequelize.query(query, { type: QueryTypes.SELECT });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    console.log(e)
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Distinct Months & Years";
+    return responseCodes.BAD_REQUEST;
+  }
+}

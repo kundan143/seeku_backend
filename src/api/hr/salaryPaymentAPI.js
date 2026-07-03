@@ -67,4 +67,13 @@ router.post('/bulkEmailSlips', async (req, res, next) => {
     return res.send(await OP_salaryPayment.bulkEmailSlips(req.body.ids));
 });
 
+router.post('/getDataPaymentCompleted', async (req, res, next) => {
+    return res.send(await OP_salaryPayment.getDataPaymentCompleted(req.body.user_id));
+});
+
+// 13 = Get per-employee leave-day summary for a month (auto-calc defaults for single form)
+router.post('/getLeaveSummary', async (req, res, next) => {
+    return res.send(await OP_salaryPayment.getLeaveSummary(req.body.user_id, req.body.payment_month, req.body.payment_year));
+});
+
 module.exports = router;
