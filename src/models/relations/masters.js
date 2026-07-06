@@ -40,6 +40,7 @@ m.newsTypeMaster = require("../news_type_master")(sequelize, DataTypes);
 m.priorityMaster = require("../priority_master")(sequelize, DataTypes);
 m.emailTemplateMaster = require("../email_template_master")(sequelize, DataTypes);
 m.systemConfig = require("../system_config")(sequelize, DataTypes);
+m.documentTypeMaster = require("../document_type_master")(sequelize, DataTypes);
 
 // Relations
 // m.usersMaster.belongsTo(dt.roleMaster, { foreignKey: 'role_id' });
@@ -171,7 +172,10 @@ m.feeTypeMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'c
 m.feeTypeMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
 m.feeTypeMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
 
-
+m.documentTypeMaster.belongsTo(m.departmentMaster, { foreignKey: 'department_id' });
+m.documentTypeMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.documentTypeMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+m.documentTypeMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
 
 
 module.exports = m;

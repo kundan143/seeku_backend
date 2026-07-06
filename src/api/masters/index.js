@@ -34,4 +34,5 @@ module.exports = async (app, jwt) => {
 	app.use(ROOT_BASE_URL_MASTERS + '/newsTypeMaster', jwt, apiActivityLogger, require('../masters/newsTypeMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/priorityMaster', jwt, apiActivityLogger, require('../masters/priorityMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/emailTemplateMaster', jwt, apiActivityLogger, require('../masters/emailTemplateMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/documentTypeMaster', jwt, apiActivityLogger, require('../masters/documentTypeMasterAPI'));
 };

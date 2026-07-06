@@ -13,7 +13,7 @@ o.orgBankMaster = require("../org_bank_master")(sequelize, DataTypes);
 o.orgContactPerson = require("../org_contact_person")(sequelize, DataTypes);
 o.orgContactNumbers = require("../org_contact_numbers")(sequelize, DataTypes);
 o.orgContactEmail = require("../org_contact_email")(sequelize, DataTypes);
-// o.relOrgDocumentType = require("../rel_org_document_type")(sequelize, DataTypes);
+o.relOrgDocumentType = require("../rel_org_document_type")(sequelize, DataTypes);
 
 // Organizations Master Relation
 o.organizationsMaster.belongsTo(m.usersMaster, { foreignKey: "sales_zone_id" });
@@ -31,15 +31,22 @@ o.orgAddresses.belongsTo(m.countryMaster, { foreignKey: "country_id" });
 o.orgAddresses.belongsTo(m.stateMaster, { foreignKey: "state_id" });
 o.orgAddresses.belongsTo(m.cityMaster, { foreignKey: "city_id" });
 
+// Organization Bank Relation
+o.orgBankMaster.belongsTo(o.organizationsMaster, { foreignKey: "org_id" });
+o.orgBankMaster.belongsTo(m.usersMaster, { foreignKey: "created_by" });
+o.orgBankMaster.belongsTo(m.usersMaster, { foreignKey: "modified_by" });
+o.organizationsMaster.hasMany(o.orgBankMaster, { foreignKey: "org_id" });
+o.orgBankMaster.belongsTo(m.bankMaster, { foreignKey: "bank_id" });
+
 // Organization Contact Relation
-o.orgContactPerson.belongsTo(m.designationMaster, { foreignKey: "designation_id" });
-o.orgContactPerson.belongsTo(o.orgAddresses, { foreignKey: "org_address_id" });
+o.orgContactPerson.belongsTo(m.designationMaster, { foreignKey: "designation_id", as: "designation_master" });
+o.orgContactPerson.belongsTo(o.orgAddresses, { foreignKey: "org_address_id", as: "org_address" });
 o.orgContactNumbers.belongsTo(o.orgContactPerson, { foreignKey: "cont_id" });
 o.orgContactNumbers.belongsTo(o.organizationsMaster, { foreignKey: "org_id" });
 o.orgContactEmail.belongsTo(o.orgContactPerson, { foreignKey: "cont_id" });
 o.orgContactEmail.belongsTo(o.organizationsMaster, { foreignKey: "org_id" });
-o.orgContactPerson.hasMany(o.orgContactNumbers, { foreignKey: "cont_id" });
-o.orgContactPerson.hasMany(o.orgContactEmail, { foreignKey: "cont_id" });
+o.orgContactPerson.hasMany(o.orgContactNumbers, { foreignKey: "cont_id", as: "org_contact_numbers" });
+o.orgContactPerson.hasMany(o.orgContactEmail, { foreignKey: "cont_id", as: "org_contact_emails" });
 
 
 // Organization Category Relation
@@ -50,8 +57,9 @@ o.relOrgCategories.belongsTo(o.orgCategoriesMaster, { foreignKey: "org_cat_id" }
 
 
 // Organization Document Relation
-// o.relOrgDocumentType.belongsTo(o.organizationsMaster, { foreignKey: "org_id" });
-// o.relOrgDocumentType.belongsTo(m.documentTypeMaster, { foreignKey: "doc_type_id" });
+o.relOrgDocumentType.belongsTo(o.organizationsMaster, { foreignKey: "org_id" });
+o.relOrgDocumentType.belongsTo(m.documentTypeMaster, { foreignKey: "doc_type_id" });
+o.organizationsMaster.hasMany(o.relOrgDocumentType, { foreignKey: "org_id" });
 
 //Organization and Contact Email Realtion
 o.orgContactEmail.belongsTo(o.organizationsMaster, { foreignKey: "org_id" });

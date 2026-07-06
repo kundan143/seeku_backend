@@ -16,10 +16,14 @@ module.exports = function (sequelize, DataTypes) {
 				key: "id"
 			}
 		},
-		bank_name:
+		bank_id:
 		{
-			type: DataTypes.STRING(255),
-			allowNull: false
+			type: DataTypes.INTEGER,
+			allowNull: false,
+			references: {
+				model: "bank_master",
+				key: "id"
+			}
 		},
 		bank_address:
 		{
@@ -44,7 +48,7 @@ module.exports = function (sequelize, DataTypes) {
 		swift_code:
 		{
 			type: DataTypes.STRING(255),
-			allowNull: false
+			allowNull: true
 		},
 		ifsc_code:
 		{
