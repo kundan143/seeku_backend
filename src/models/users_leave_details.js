@@ -72,6 +72,10 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.DATE,
       allowNull: true,
     },
+    rejected_reason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     cancelled_date: {
       type: DataTypes.DATE,
       allowNull: true,

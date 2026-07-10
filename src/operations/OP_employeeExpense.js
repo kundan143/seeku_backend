@@ -60,6 +60,10 @@ exports.deleteData = async function (body) {
 
 exports.getAllData = async function (body) {
   try {
+    let statusFilter = '';
+    if (body.status !== undefined && body.status !== null) {
+      statusFilter = ` AND ee.status = ${body.status}`;
+    }
     let query = `SELECT ee.*, etm.expense_type_name,
         CASE
             WHEN ee.status = 0 THEN 'Pending'
@@ -67,6 +71,7 @@ exports.getAllData = async function (body) {
             WHEN ee.status = 2 THEN 'Rejected'
             ELSE 'Unknown'
         END AS status_name,
+        CONCAT(emp.first_name, ' ', emp.last_name) AS employee_name,
         CASE
             WHEN ee.status = 0 THEN CONCAT(emp.first_name, ' ', emp.last_name)
             WHEN ee.status = 1 THEN CONCAT(appr.first_name, ' ', appr.last_name)
@@ -82,8 +87,9 @@ exports.getAllData = async function (body) {
         FROM employee_expense AS ee
         JOIN expense_type_master AS etm ON ee.expense_type_id = etm.id
         JOIN users_master AS emp ON ee.created_by = emp.id
+        JOIN users_master AS emp2 on ee.employee_id = emp2.id
         LEFT JOIN users_master AS appr ON ee.modified_by = appr.id
-        WHERE ee.status != 3 AND ee.status = ${body.status}
+        WHERE ee.status != 3 
         ORDER BY ee.id DESC;`;
 
     const data = await sequelize.query(query, {

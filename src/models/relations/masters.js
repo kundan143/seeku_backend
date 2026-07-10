@@ -17,6 +17,7 @@ m.departmentMaster = require("../department_master")(sequelize, DataTypes);
 m.wireCableTypesMaster = require("../wire_cable_types_master")(sequelize, DataTypes);
 m.cableCategoryMaster = require("../cable_category_master")(sequelize, DataTypes);
 m.cableStageMaster = require("../cable_stage_master")(sequelize, DataTypes);
+m.stageMaster = require("../stage_master")(sequelize, DataTypes);
 m.unitTypeMaster = require("../unit_type_master")(sequelize, DataTypes);
 m.materialMaster = require("../material_master")(sequelize, DataTypes);
 m.paymentTermMaster = require("../payment_term_master")(sequelize, DataTypes);

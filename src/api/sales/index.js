@@ -4,4 +4,5 @@ const apiActivityLogger = require("../../services/apiActivityLogger");
 
 module.exports = async (app, jwt) => {
 	app.use(ROOT_BASE_URL_MASTERS + '/salesOrder', jwt, apiActivityLogger, require('./salesOrderAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/leads', jwt, apiActivityLogger, require('./leadsAPI'));
 };

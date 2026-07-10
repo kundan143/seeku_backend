@@ -1,5 +1,5 @@
 const { get_so_financial_year } = require("../services/commonServices");
-const { salesOrder, relSalesOrderItems } = require("../models");
+const { salesOrder, relSalesOrderItems, organizationsMaster } = require("../models");
 // const { addActivityLog } = require("../services/activityLog");
 const { responseCodes } = require("../services/baseReponse");
 // const { sendNotification } = require("../services/notificationService");
@@ -12,6 +12,16 @@ exports.addData = async function (body) {
   const t = await sequelize.transaction();
   try {
     body.data["current_financial_year"] = get_so_financial_year();
+    getZoneId = await organizationsMaster.findOne({
+      where: {
+        id: body.data.org_id,
+      },
+    });
+    if (getZoneId) {
+      body.data["sales_person_id"] = getZoneId.sales_zone_id;
+    }else {
+      body.data["sales_person_id"] = body.data["created_by"];
+    }
     const result = await salesOrder.create(body.data, { transaction: t });
 
     if (Array.isArray(body.item_details) && body.item_details.length > 0) {
@@ -44,6 +54,7 @@ exports.addData = async function (body) {
     return responseCodes.SUCCESS;
   } catch (e) {
     await t.rollback();
+    console.error("Error adding sales order:", e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Sales Order.";
     return responseCodes.BAD_REQUEST;
@@ -125,8 +136,8 @@ exports.getAllData = async function (body) {
                     join organizations_master om on om.id = so.org_id
                     join payment_term_master ptm on ptm.id = so.payment_term_id
                     join city_master cm on cm.id = so.delivery_city_id
-                    join users_master um on um.id = so.sales_person_id
-                    join users_master um2 on um2.id = so.crm_person_id
+                    left join users_master um on um.id = so.sales_person_id
+                    left join users_master um2 on um2.id = so.crm_person_id
                     join wire_cable_types_master wctm on wctm.id = so.wire_cable_type_id
                     join unit_type_master utm on utm.id = rsoi.uom_id
                     order by so.id desc;`;
@@ -156,8 +167,8 @@ exports.getOneData = async function (id) {
                     join organizations_master om on om.id = so.org_id
                     join payment_term_master ptm on ptm.id = so.payment_term_id
                     join city_master cm on cm.id = so.delivery_city_id
-                    join users_master um on um.id = so.sales_person_id
-                    join users_master um2 on um2.id = so.crm_person_id
+                    left join users_master um on um.id = so.sales_person_id
+                    left join users_master um2 on um2.id = so.crm_person_id
                     join wire_cable_types_master wctm on wctm.id = so.wire_cable_type_id
                     join unit_type_master utm on utm.id = rsoi.uom_id
                     where so.id = ${id}

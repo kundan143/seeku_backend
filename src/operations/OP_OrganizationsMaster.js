@@ -108,15 +108,10 @@ exports.getAllData = async function () {
 exports.getOneData = async function (id) {
   try {
     if (id) {
-      let query = `select * 
-		from organizations_master om 
-		left JOIN (
-			SELECT org_id , ARRAY_AGG(name) AS polymer 
-			FROM rel_org_polymer as rop
-			join polymer_master as pm on pm.id = rop.polymer_id 
-			GROUP BY 1 
-		) as rop on rop.org_id = om.id
-		where om.id = ${id}`;
+      let query = `select concat(um.first_name, ' ', um.last_name ) as zone, om.* 
+                    from organizations_master om 
+                    left join users_master um on um.id = om.sales_zone_id 
+                    where om.id = ${id} and om.status = true;`;
       let data = await sequelize.query(query, {
         type: QueryTypes.SELECT,
       });
@@ -146,23 +141,6 @@ exports.searchOrganizations = async function (body) {
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
   }
-};
-
-exports.getOneData = async function (id) {
-	try {
-		var data = await organizationsMaster.findAll({
-			where: {
-				id: id
-			}
-		});
-		responseCodes.SUCCESS.data = data;
-		responseCodes.SUCCESS.message = "";
-		return responseCodes.SUCCESS;
-	} catch (e) {
-		responseCodes.BAD_REQUEST.data = e;
-		responseCodes.BAD_REQUEST.message = "Failed to Load Data";
-		return responseCodes.BAD_REQUEST;
-	}
 };
 
 exports.getCategoryWiseOrg = async function (body) {

@@ -1301,11 +1301,11 @@ CREATE TABLE sales_order (
     payment_term_id INTEGER NOT NULL REFERENCES payment_term_master(id), -- Payment term reference
     delivery_city_id INTEGER NOT NULL REFERENCES city_master(id), -- Delivery city reference
     sales_person_id INTEGER NOT NULL REFERENCES users_master(id), -- Sales person handling booking
-    crm_person_id INTEGER NOT NULL REFERENCES users_master(id), -- CRM person reference
+    crm_person_id INTEGER REFERENCES users_master(id), -- CRM person reference
     final_place_of_delivery TEXT NOT NULL, -- Final place of delivery
-    customer_email VARCHAR(255) NOT NULL, -- Customer email address
+    customer_email TEXT[] NOT NULL DEFAULT '{}', -- Customer email address
     wire_cable_type_id INTEGER NOT NULL REFERENCES wire_cable_types_master(id), -- Wire/cable type reference
-    customer_mobile VARCHAR(10) NOT NULL, -- 10-digit customer mobile number
+    customer_mobile TEXT[] NOT NULL DEFAULT '{}', -- 10-digit customer mobile number
     remarks TEXT, -- Additional remarks for booking
     status DOUBLE PRECISION DEFAULT 0, -- Booking status (0 = New, 1 = Confirmed, etc.)
     is_deleted DOUBLE PRECISION DEFAULT 0, -- Soft delete flag (0 = Active, 1 = Deleted)
@@ -1355,7 +1355,7 @@ CREATE TABLE rel_sales_order_items (
     item_id INTEGER NOT NULL REFERENCES item_master(id), -- Item reference (e.g., product, material)
     quantity DOUBLE PRECISION DEFAULT 0, -- Ordered quantity
     uom_id INTEGER NOT NULL REFERENCES unit_type_master(id), -- Unit of Measurement reference
-    material_requirement_date DATE NOT NULL, -- Date when material is required
+    material_requirement_date DATE, -- Date material 
     rate DOUBLE PRECISION DEFAULT 0, -- Rate per unit
     amount DOUBLE PRECISION DEFAULT 0 -- Total amount = quantity × rate
 );

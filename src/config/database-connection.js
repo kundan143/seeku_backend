@@ -15,7 +15,7 @@ const sequelize = new Sequelize(
       min: 0,
       idle: 10000,
     },
-    timezone: "+01:00",
+    timezone: "+05:30",
   }
 );
 
@@ -49,7 +49,7 @@ if (process.env.PROD_DATABASE) {
         min: 0,
         idle: 10000,
       },
-      timezone: "+01:00",
+      timezone: "+05:30",
     }
   );
 

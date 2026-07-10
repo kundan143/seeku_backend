@@ -1,5 +1,5 @@
 module.exports = function (sequelize, DataTypes) {
-    let table_name = "sales_order";
+    let table_name = "leads";
     let columns = {
         id: {
             autoIncrement: true,
@@ -7,21 +7,34 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: false,
             primaryKey: true,
         },
-        booking_date: {
+        lead_date: {
             type: DataTypes.DATEONLY,
             allowNull: false,
         },
-        so_no: {
-            type: DataTypes.STRING(255),
-            allowNull: true,
-        },
-        current_financial_year: {
-            type: DataTypes.STRING(255),
+        due_date: {
+            type: DataTypes.DATEONLY,
             allowNull: false,
         },
-        so_sequence_no: {
+        source_id: {
             type: DataTypes.INTEGER,
-            allowNull: true,
+            allowNull: false,
+        },
+        lead_type_id: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+        },
+        lead_kind_id: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+        },
+        stage_id: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 1,
+            references: {
+                model: "stage_master",
+                key: "id",
+            },
         },
         org_id: {
             type: DataTypes.INTEGER,
@@ -31,35 +44,27 @@ module.exports = function (sequelize, DataTypes) {
                 key: "id",
             },
         },
-        buyer_address: {
-            type: DataTypes.TEXT,
+        email: {
+            type: DataTypes.ARRAY(DataTypes.TEXT),
             allowNull: false,
+            defaultValue: [],
         },
-        payment_term_id: {
-            type: DataTypes.INTEGER,
+        phone: {
+            type: DataTypes.ARRAY(DataTypes.TEXT),
             allowNull: false,
-            references: {
-                model: "payment_term_master",
-                key: "id",
-            },
+            defaultValue: [],
         },
-        delivery_city_id: {
-            type: DataTypes.INTEGER,
+        enquiry_details: {
+            type: DataTypes.ARRAY(DataTypes.TEXT),
             allowNull: false,
-            references: {
-                model: "city_master",
-                key: "id",
-            },
+            defaultValue: [],
         },
-        sales_person_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: "users_master",
-                key: "id",
-            },
+        lead_documents: {
+            type: DataTypes.ARRAY(DataTypes.TEXT),
+            allowNull: true,
+            defaultValue: [],
         },
-        crm_person_id: {
+        assigned_to: {
             type: DataTypes.INTEGER,
             allowNull: true,
             references: {
@@ -67,28 +72,8 @@ module.exports = function (sequelize, DataTypes) {
                 key: "id",
             },
         },
-        final_place_of_delivery: {
-            type: DataTypes.TEXT,
-            allowNull: false,
-        },
-        customer_email: {
-            type: DataTypes.ARRAY(DataTypes.TEXT),
-            allowNull: false,
-        },
-        wire_cable_type_id: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: "wire_cable_types_master",
-                key: "id",
-            },
-        },
-        customer_mobile: {
-            type: DataTypes.ARRAY(DataTypes.STRING(255)),
-            allowNull: false,
-        },
-        remarks: {
-            type: DataTypes.TEXT,
+        estimated_value: {
+            type: DataTypes.DOUBLE,
             allowNull: true,
         },
         status: {
@@ -109,15 +94,11 @@ module.exports = function (sequelize, DataTypes) {
                 key: "id",
             },
         },
-        created_at: {
+        created_date: {
             type: DataTypes.DATE,
-            allowNull: true,
+            allowNull: false,
         },
-        updated_at: {
-            type: DataTypes.DATE,
-            allowNull: true,
-        },
-        updated_by: {
+        modified_by: {
             type: DataTypes.INTEGER,
             allowNull: true,
             references: {
@@ -125,10 +106,14 @@ module.exports = function (sequelize, DataTypes) {
                 key: "id",
             },
         },
+        modified_date: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
     };
     let optional = {
         sequelize,
-        tableName: "sales_order",
+        tableName: "leads",
         schema: "public",
         timestamps: false,
     };
