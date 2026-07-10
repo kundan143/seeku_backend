@@ -69,25 +69,25 @@ routers.post("/user_login", async (req, res) => {
             );
           }
 
-          let designationId = user.designation_id;
+          let roleId = user.role_id;
           let userId = user.id;
-          console.log("[user_login] designationId:", designationId, "userId:", userId);
+          console.log("[user_login] roleId:", roleId, "userId:", userId);
 
           let menuPermissionSQL = `SELECT mm.*, mm.id as mm_id,
                                         mp.id as mp_id, mp.menu_id as mp_menu_id,
-                                        mp.designation_id as mp_designation_id, mp.user_id as mp_user_id,
+                                        mp.role_id as mp_role_id, mp.user_id as mp_user_id,
                                         mp.add_opt, mp.edit_opt, mp.view_opt, mp.delete_opt,
                                         mp.excel_opt, mp.pdf_opt, mp.approve_opt, mp.mailsent_opt
                                         FROM menu_master AS mm
                                         LEFT JOIN menu_permission AS mp ON mp.menu_id = mm.id
-                                        WHERE mp.designation_id = :designationId AND mp.user_id = :userId
+                                        WHERE mp.role_id = :roleId AND mp.user_id = :userId
                                         AND mp.view_opt = 1
                                         ORDER BY mm.parent_rank ASC, mm.child_rank ASC;`;
 
           console.log("[user_login] fetching menu permissions");
           const result = await sequelize.query(menuPermissionSQL, {
             type: QueryTypes.SELECT,
-            replacements: { designationId, userId },
+            replacements: { roleId, userId },
           });
           console.log("[user_login] menu permission rows fetched:", result.length);
           let parents_arr = result.filter((o) => o.parent_id == null);
@@ -96,8 +96,8 @@ routers.post("/user_login", async (req, res) => {
           let all_menu = menu_details;
           console.log("[user_login] menu tree built, top-level nodes:", all_menu.length);
 
-          console.log("[user_login] fetching links for designationId/userId");
-          var get_links = await getlink(designationId, userId);
+          console.log("[user_login] fetching links for roleId/userId");
+          var get_links = await getlink(roleId, userId);
           var all_links = JSON.stringify(get_links);
           console.log("[user_login] links fetched");
 
@@ -347,15 +347,15 @@ function recursion(get_parents, arr) {
   return final_arr;
 }
 
-async function getlink(designation_id, user_id) {
+async function getlink(role_id, user_id) {
   try {
     let sql = `select mm.id as menu_id, mm.menu_name,mm.link,lm.link_name from menu_master as mm
         left join link_master as lm on mm.id=lm.menu_id
         left join link_permission as lp on lm.id=lp.link_id
-        where lp.designation_id = :designation_id AND lp.user_id = :user_id`;
+        where lp.role_id = :role_id AND lp.user_id = :user_id`;
     const linkResults = await sequelize.query(sql, {
       type: QueryTypes.SELECT,
-      replacements: { designation_id, user_id },
+      replacements: { role_id, user_id },
     });
     let result = groupBy(linkResults, (item) => {
       return [item.link];

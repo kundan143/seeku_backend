@@ -18,10 +18,10 @@ module.exports = function (sequelize, DataTypes) {
       references: { model: "users_master", key: "id" },
     },
     access: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
-    designation_id: {
+    role_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: { model: "designation_master", key: "id" },
+      references: { model: "role_master", key: "id" },
     },
     created_by: {
       type: DataTypes.INTEGER,

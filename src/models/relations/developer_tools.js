@@ -14,13 +14,13 @@ dt.userActivityLog = require("../user_activity_log")(sequelize, DataTypes);
 dt.menuPermission.belongsTo(m.usersMaster, { foreignKey: "created_by" });
 dt.menuPermission.belongsTo(m.usersMaster, { foreignKey: "modified_by" });
 dt.menuPermission.belongsTo(m.usersMaster, { foreignKey: "user_id" });
-dt.menuPermission.belongsTo(m.designationMaster, { foreignKey: "designation_id" });
+dt.menuPermission.belongsTo(m.roleMaster, { foreignKey: "role_id" });
 
 
 dt.linkPermission.belongsTo(m.usersMaster, { foreignKey: "created_by" });
 dt.linkPermission.belongsTo(m.usersMaster, { foreignKey: "modified_by" });
 dt.linkPermission.belongsTo(m.usersMaster, { foreignKey: "user_id" });
-dt.linkPermission.belongsTo(m.designationMaster, { foreignKey: "designation_id" });
+dt.linkPermission.belongsTo(m.roleMaster, { foreignKey: "role_id" });
 
 dt.linkMaster.belongsTo(dt.menuMaster, { foreignKey: "menu_id" });
 

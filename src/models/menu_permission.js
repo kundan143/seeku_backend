@@ -25,10 +25,10 @@ module.exports = function (sequelize, DataTypes) {
     pdf_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     approve_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     mailsent_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
-    designation_id: {
+    role_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: { model: "designation_master", key: "id" },
+      references: { model: "role_master", key: "id" },
     },
     created_by: {
       type: DataTypes.INTEGER,

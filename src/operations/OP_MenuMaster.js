@@ -17,7 +17,7 @@ exports.addData = async function (body) {
 
 		userData.forEach(userElement => {
 			menu_permissions_arr.push({
-				designation_id: 1,
+				role_id: 1,
 				menu_id: result.id,
 				add_opt: 1,
 				edit_opt: 1,

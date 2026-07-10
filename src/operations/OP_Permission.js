@@ -37,7 +37,7 @@ exports.addData = async function (body) {
         pdf_opt,
         approve_opt,
         mailsent_opt,
-        designation_id,
+        role_id,
         created_by,
         modified_by,
       } = permission;
@@ -86,7 +86,7 @@ exports.addData = async function (body) {
           pdf_opt,
           approve_opt,
           mailsent_opt,
-          designation_id,
+          role_id,
           created_by,
           created_date: new Date(),
           modified_by: null,
@@ -155,20 +155,15 @@ exports.getPermissions = async function (body) {
       const menuQuery = `SELECT  mm.id, mm.parent_id, mm.menu_name, mm.icon,
                         mm.child_rank,mp.user_id,mp.add_opt,mp.edit_opt, mp.delete_opt,
                         mp.view_opt, mp.excel_opt, mp.pdf_opt, mp.approve_opt, mp.mailsent_opt,
-                        mp.designation_id, mp.is_active, mm.id as menu_id
+                        mp.role_id, mp.is_active, mm.id as menu_id
                         FROM menu_master mm
-                        LEFT JOIN menu_permission mp ON mp.menu_id = mm.id
-                        WHERE (mp.user_id = ${body.emp_id} OR mp.user_id IS NULL)
+                        LEFT JOIN menu_permission mp ON mp.menu_id = mm.id AND mp.user_id = :emp_id
                         ORDER BY mm.menu_name ASC;`
-        // const menuQuery = ` SELECT * FROM menu_permission  mp
-        //                     LEFT JOIN menu_master AS mm ON mm.id = mp.menu_id
-        //                     WHERE is_active = 1 AND user_id = ${body.emp_id}
-        //                     AND designation_id = ${body.designation_id};`;
 
-        const linkQuery = ` SELECT * FROM link_permission  WHERE is_active = 1  AND user_id = ${body.emp_id};`;
+        const linkQuery = ` SELECT * FROM link_permission  WHERE is_active = 1  AND user_id = :emp_id;`;
 
-        const menuPermissions = await sequelize.query(menuQuery, { type: QueryTypes.SELECT });
-        const linkPermissions = await sequelize.query(linkQuery, { type: QueryTypes.SELECT });
+        const menuPermissions = await sequelize.query(menuQuery, { type: QueryTypes.SELECT, replacements: { emp_id: body.emp_id } });
+        const linkPermissions = await sequelize.query(linkQuery, { type: QueryTypes.SELECT, replacements: { emp_id: body.emp_id } });
 
         const data = {
             menu_permissions: menuPermissions,
