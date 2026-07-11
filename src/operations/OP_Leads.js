@@ -61,6 +61,7 @@ exports.addData = async function (body) {
     responseCodes.SUCCESS.message = "Lead Added Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
+    console.error("Error adding lead:", e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Lead";
     return responseCodes.BAD_REQUEST;
@@ -111,11 +112,17 @@ exports.getAllData = async function () {
   try {
     let query = `select l.*, om.org_name as buyer_name,
                     sm.stage_name, sm.color_code as stage_color,
-                    concat(au.first_name, ' ', au.last_name) as assigned_to_name
+                    concat(au.first_name, ' ', au.last_name) as assigned_to_name,
+                    src.field_value as source_name, src.id as source_id,
+                    lt.field_value as lead_type_name, lt.id as lead_type_id,
+                    lk.field_value as lead_kind_name, lk.id as lead_kind_id
                   from leads l
                   join organizations_master om on om.id = l.org_id
                   join stage_master sm on sm.id = l.stage_id
                   left join users_master au on au.id = l.assigned_to
+                  left join dropdown_value_master src on src.id = l.source_id
+                  left join dropdown_value_master lt on lt.id = l.lead_type_id
+                  left join dropdown_value_master lk on lk.id = l.lead_kind_id
                   where l.is_deleted = 0
                   order by l.id desc;`;
     let results = await sequelize.query(query, { type: QueryTypes.SELECT });
@@ -131,9 +138,15 @@ exports.getAllData = async function () {
 
 exports.getOneData = async function (id) {
   try {
-    let query = `select l.*, om.org_name as buyer_name
+    let query = `select l.*, om.org_name as buyer_name,
+                    src.field_value as source_name,
+                    lt.field_value as lead_type_name,
+                    lk.field_value as lead_kind_name
                   from leads l
                   join organizations_master om on om.id = l.org_id
+                  left join dropdown_value_master src on src.id = l.source_id
+                  left join dropdown_value_master lt on lt.id = l.lead_type_id
+                  left join dropdown_value_master lk on lk.id = l.lead_kind_id
                   where l.id = :id;`;
     let results = await sequelize.query(query, { replacements: { id }, type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = results;

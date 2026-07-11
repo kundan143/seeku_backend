@@ -2,6 +2,7 @@ const {DataTypes} = require("sequelize");
 const {sequelize} = require("../../config/database-connection");
 const m = require("./masters");
 const o = require("./organizations");
+const dt = require("./developer_tools");
 const s = {};
 s.salesOrder = require("../sales_order")(sequelize, DataTypes);
 s.relSalesOrderItems = require("../rel_sales_order_items")(sequelize, DataTypes);
@@ -30,6 +31,9 @@ s.leads.belongsTo(m.stageMaster, {foreignKey: 'stage_id'});
 s.leads.belongsTo(m.usersMaster, {as: 'assigned_to_user', foreignKey: 'assigned_to'});
 s.leads.belongsTo(m.usersMaster, {as: 'created_by_user', foreignKey: 'created_by'});
 s.leads.belongsTo(m.usersMaster, {as: 'modified_by_user', foreignKey: 'modified_by'});
+s.leads.belongsTo(dt.dropdownValueMaster, {as: 'source', foreignKey: 'source_id'});
+s.leads.belongsTo(dt.dropdownValueMaster, {as: 'lead_type', foreignKey: 'lead_type_id'});
+s.leads.belongsTo(dt.dropdownValueMaster, {as: 'lead_kind', foreignKey: 'lead_kind_id'});
 
 s.leadHistory.belongsTo(s.leads, {foreignKey: 'lead_id'});
 s.leadHistory.belongsTo(m.usersMaster, {as: 'created_by_user', foreignKey: 'created_by'});

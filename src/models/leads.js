@@ -18,14 +18,26 @@ module.exports = function (sequelize, DataTypes) {
         source_id: {
             type: DataTypes.INTEGER,
             allowNull: false,
+            references: {
+                model: "dropdown_value_master",
+                key: "id",
+            },
         },
         lead_type_id: {
             type: DataTypes.INTEGER,
             allowNull: false,
+            references: {
+                model: "dropdown_value_master",
+                key: "id",
+            },
         },
         lead_kind_id: {
             type: DataTypes.INTEGER,
             allowNull: false,
+            references: {
+                model: "dropdown_value_master",
+                key: "id",
+            },
         },
         stage_id: {
             type: DataTypes.INTEGER,
