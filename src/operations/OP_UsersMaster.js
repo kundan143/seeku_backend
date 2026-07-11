@@ -8,6 +8,7 @@ const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { Op, QueryTypes } = require("sequelize");
 const bcrypt = require("bcryptjs");
+const { copyRoleTemplateToUser } = require("./OP_RolePermission");
 const saltRounds = 10;
 
 exports.addData = async function (body) {
@@ -82,6 +83,14 @@ exports.addData = async function (body) {
           created_date: body.salaryDetails.created_date,
         },
         { transaction: t }
+      );
+    }
+
+    // New user starts with their role's default permission set.
+    if (body.userDetails.role_id) {
+      await copyRoleTemplateToUser(
+        { roleId: body.userDetails.role_id, userId: userResult.id, createdBy: body.userDetails.created_by },
+        t
       );
     }
 
@@ -191,6 +200,48 @@ exports.updateData = async function (body) {
     return responseCodes.BAD_REQUEST;
   }
 };
+
+// Dedicated action (as opposed to a role_id change sliding through the
+// generic updateData above) so that assigning a role always, explicitly,
+// resets the user's permissions to that role's current template —
+// generic profile edits that happen to touch role_id should not silently
+// wipe a user's hand-tuned permissions as a side effect.
+exports.assignRole = async function (body) {
+  let t;
+  try {
+    if (!body.id || !body.role_id) {
+      throw new TypeError("Missing required field: id or role_id");
+    }
+
+    t = await sequelize.transaction();
+
+    await usersMaster.update(
+      {
+        role_id: body.role_id,
+        modified_by: body.modified_by,
+        modified_date: new Date(),
+      },
+      { where: { id: body.id }, transaction: t }
+    );
+
+    await copyRoleTemplateToUser(
+      { roleId: body.role_id, userId: body.id, createdBy: body.modified_by },
+      t
+    );
+
+    await t.commit();
+
+    responseCodes.SUCCESS.data = null;
+    responseCodes.SUCCESS.message = "Role assigned successfully";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    if (t) await t.rollback();
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to assign role";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 exports.updatePassword = async function (body) {
   try {
     if (body.data.password != null) {

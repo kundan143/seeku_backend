@@ -1,4 +1,6 @@
 const OP_salaryPayment = require("../../operations/OP_salaryPayment");
+const { canAccessUserRecord } = require("../../services/profileAccess");
+const { responseCodes } = require("../../services/baseReponse");
 
 const express = require('express');
 const router = express.Router();
@@ -67,7 +69,12 @@ router.post('/bulkEmailSlips', async (req, res, next) => {
     return res.send(await OP_salaryPayment.bulkEmailSlips(req.body.ids));
 });
 
+// Used by My Profile's payslip tab — only the record owner or Employee
+// Master view/edit access may fetch another user's completed payments
 router.post('/getDataPaymentCompleted', async (req, res, next) => {
+    if (!(await canAccessUserRecord(req.headers.userId, req.body.user_id))) {
+        return res.send(responseCodes.FORBIDDEN);
+    }
     return res.send(await OP_salaryPayment.getDataPaymentCompleted(req.body.user_id));
 });
 
