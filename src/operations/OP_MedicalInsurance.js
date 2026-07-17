@@ -1,12 +1,11 @@
-const { cityMaster, stateMaster } = require("../models");
+const { medicalInsurance } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
-// const { sendNotification } = require("../services/notificationService");
 const { sequelize } = require("../config/database-connection");
-const { Op, QueryTypes } = require("sequelize");
+const { QueryTypes } = require("sequelize");
 
 exports.addData = async function (body) {
   try {
-    var result = await cityMaster.create(body.data);
+    const result = await medicalInsurance.create(body.data);
     responseCodes.SUCCESS.data = result.id;
     responseCodes.SUCCESS.message = "Row Added Successfully";
     return responseCodes.SUCCESS;
@@ -19,10 +18,8 @@ exports.addData = async function (body) {
 
 exports.updateData = async function (body) {
   try {
-    await cityMaster.update(body.data, {
-      where: {
-        id: body.id,
-      },
+    await medicalInsurance.update(body.data, {
+      where: { id: body.id },
     });
     responseCodes.SUCCESS.data = null;
     responseCodes.SUCCESS.message = "Row Updated Successfully";
@@ -36,10 +33,8 @@ exports.updateData = async function (body) {
 
 exports.deleteData = async function (body) {
   try {
-    await cityMaster.destroy({
-      where: {
-        id: body.id,
-      },
+    await medicalInsurance.update(body.data, {
+      where: { id: body.id },
     });
     responseCodes.SUCCESS.data = null;
     responseCodes.SUCCESS.message = "Row Deleted Successfully";
@@ -51,11 +46,19 @@ exports.deleteData = async function (body) {
   }
 };
 
+// Admin-wide list — every employee's insurance enrollments.
 exports.getAllData = async function () {
   try {
-    var data = await cityMaster.findAll({
-      order: [["id", "ASC"]],
-    });
+    const query = `select mi.*, concat(emp.first_name, ' ', emp.last_name) as employee_name,
+                    concat(um.first_name, ' ', um.last_name) as created_name,
+                    concat(um2.first_name, ' ', um2.last_name) as modified_name
+                  from medical_insurance mi
+                  join users_master emp on emp.id = mi.employee_id
+                  join users_master um on um.id = mi.created_by
+                  left join users_master um2 on um2.id = mi.modified_by
+                  where mi.status = 1
+                  order by mi.id desc;`;
+    const data = await sequelize.query(query, { type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
@@ -66,12 +69,20 @@ exports.getAllData = async function () {
   }
 };
 
-exports.getOneData = async function (id) {
+// Employee self-service — only this employee's own enrollments (used by the My Profile tab).
+exports.getOneData = async function (employee_id) {
   try {
-    var data = await cityMaster.findAll({
-      where: {
-        id: id,
-      },
+    if (!employee_id) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "Employee ID is required";
+      return responseCodes.BAD_REQUEST;
+    }
+    const query = `select mi.* from medical_insurance mi
+                  where mi.employee_id = :employee_id and mi.status = 1
+                  order by mi.id desc;`;
+    const data = await sequelize.query(query, {
+      replacements: { employee_id },
+      type: QueryTypes.SELECT,
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
@@ -79,45 +90,6 @@ exports.getOneData = async function (id) {
   } catch (e) {
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
-    return responseCodes.BAD_REQUEST;
-  }
-};
-
-exports.getStateCities = async function (state_id) {
-  try {
-    var data = await cityMaster.findAll({
-      include: [
-        {
-          model: stateMaster,
-          attributes: ["name"],
-        },
-      ],
-      where: {
-        state_id: state_id,
-      },
-      order: [["id", "ASC"]],
-    });
-    responseCodes.SUCCESS.data = data;
-    responseCodes.SUCCESS.message = "";
-    return responseCodes.SUCCESS;
-  } catch (e) {
-    responseCodes.BAD_REQUEST.data = e;
-    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
-    return responseCodes.BAD_REQUEST;
-  }
-};
-// Example implementation in OP_CityMaster.js
-exports.searchCity = async function (body) {
-  try {
-	let query = `SELECT * FROM city_master WHERE name ILIKE :search`;
-	const data = await sequelize.query(query, { replacements: { search: `%${body}%` }, type: QueryTypes.SELECT });
-    responseCodes.SUCCESS.data = data;
-    responseCodes.SUCCESS.message = "";
-    return responseCodes.SUCCESS;
-  } catch (e) {
-	
-    responseCodes.BAD_REQUEST.data = e;
-    responseCodes.BAD_REQUEST.message = "Failed to search city";
     return responseCodes.BAD_REQUEST;
   }
 };

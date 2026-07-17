@@ -1,4 +1,4 @@
-const { employeeExpenses } = require("../models");
+const { employeeExpenses, employeeExpenseTravelLegs } = require("../models");
 // const { addActivityLog } = require("../services/activityLog");
 const { responseCodes } = require("../services/baseReponse");
 // const { sendNotification } = require("../services/notificationService");
@@ -6,15 +6,24 @@ const { sequelize } = require("../config/database-connection");
 const { Op, QueryTypes } = require("sequelize");
 
 exports.addData = async function (body) {
+  const t = await sequelize.transaction();
   try {
-    var result = await employeeExpenses.create(body.data);
+    const { travel_legs, ...expenseData } = body.data;
+    var result = await employeeExpenses.create(expenseData, { transaction: t });
+    if (Array.isArray(travel_legs) && travel_legs.length) {
+      await employeeExpenseTravelLegs.bulkCreate(
+        travel_legs.map((leg) => ({ ...leg, employee_expense_id: result.id })),
+        { transaction: t }
+      );
+    }
+    await t.commit();
     responseCodes.SUCCESS.data = result.id;
     // sendNotification("new_user_added", result.id, body.data.created_by);
     // addActivityLog(usersMaster.tableName, result.id, body, "ADD");
     responseCodes.SUCCESS.message = "Row Updated Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    
+    await t.rollback();
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Row";
     return responseCodes.BAD_REQUEST;
@@ -22,18 +31,31 @@ exports.addData = async function (body) {
 };
 
 exports.updateData = async function (body) {
+  const t = await sequelize.transaction();
   try {
-    await employeeExpenses.update(body.data, {
+    const { travel_legs, ...expenseData } = body.data;
+    await employeeExpenses.update(expenseData, {
       where: {
         id: body.id,
       },
+      transaction: t,
     });
+    if (Array.isArray(travel_legs)) {
+      await employeeExpenseTravelLegs.destroy({ where: { employee_expense_id: body.id }, transaction: t });
+      if (travel_legs.length) {
+        await employeeExpenseTravelLegs.bulkCreate(
+          travel_legs.map((leg) => ({ ...leg, employee_expense_id: body.id })),
+          { transaction: t }
+        );
+      }
+    }
+    await t.commit();
     responseCodes.SUCCESS.data = null;
     // addActivityLog(usersMaster.tableName, body.id, body, "UPDATE");
     responseCodes.SUCCESS.message = "Row Updated Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    
+    await t.rollback();
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Row";
     return responseCodes.BAD_REQUEST;
@@ -83,13 +105,33 @@ exports.getAllData = async function (body) {
             WHEN ee.status = 1 THEN ee.modified_date
             WHEN ee.status = 2 THEN ee.modified_date
             ELSE null
-        END AS action_by_date
+        END AS action_by_date,
+        (SELECT COALESCE(json_agg(
+                json_build_object(
+                    'id', tl.id,
+                    'employee_expense_id', tl.employee_expense_id,
+                    'from_location_id', tl.from_location_id,
+                    'from_location_name', fc.name,
+                    'to_location_id', tl.to_location_id,
+                    'to_location_name', tc.name,
+                    'purpose', tl.purpose,
+                    'vehicle_type', tl.vehicle_type,
+                    'distance_km', tl.distance_km,
+                    'rate_per_km', tl.rate_per_km,
+                    'sub_total', tl.sub_total,
+                    'created_date', tl.created_date
+                ) ORDER BY tl.id
+            ), '[]')
+            FROM employee_expense_travel_leg tl
+            LEFT JOIN city_master fc ON fc.id = tl.from_location_id
+            LEFT JOIN city_master tc ON tc.id = tl.to_location_id
+            WHERE tl.employee_expense_id = ee.id) AS travel_legs
         FROM employee_expense AS ee
         JOIN expense_type_master AS etm ON ee.expense_type_id = etm.id
         JOIN users_master AS emp ON ee.created_by = emp.id
         JOIN users_master AS emp2 on ee.employee_id = emp2.id
         LEFT JOIN users_master AS appr ON ee.modified_by = appr.id
-        WHERE ee.status != 3 
+        WHERE ee.status != 3
         ORDER BY ee.id DESC;`;
 
     const data = await sequelize.query(query, {
@@ -132,7 +174,27 @@ exports.getOneData = async function (employee_id) {
             WHEN ee.status = 1 THEN ee.modified_date
             WHEN ee.status = 2 THEN ee.modified_date
             ELSE null
-        END AS action_by_date
+        END AS action_by_date,
+        (SELECT COALESCE(json_agg(
+                json_build_object(
+                    'id', tl.id,
+                    'employee_expense_id', tl.employee_expense_id,
+                    'from_location_id', tl.from_location_id,
+                    'from_location_name', fc.name,
+                    'to_location_id', tl.to_location_id,
+                    'to_location_name', tc.name,
+                    'purpose', tl.purpose,
+                    'vehicle_type', tl.vehicle_type,
+                    'distance_km', tl.distance_km,
+                    'rate_per_km', tl.rate_per_km,
+                    'sub_total', tl.sub_total,
+                    'created_date', tl.created_date
+                ) ORDER BY tl.id
+            ), '[]')
+            FROM employee_expense_travel_leg tl
+            LEFT JOIN city_master fc ON fc.id = tl.from_location_id
+            LEFT JOIN city_master tc ON tc.id = tl.to_location_id
+            WHERE tl.employee_expense_id = ee.id) AS travel_legs
         FROM employee_expense AS ee
         JOIN expense_type_master AS etm ON ee.expense_type_id = etm.id
         JOIN users_master AS emp ON ee.created_by = emp.id

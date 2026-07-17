@@ -76,6 +76,11 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true,
             defaultValue: [],
         },
+        email_attachments: {
+            type: DataTypes.ARRAY(DataTypes.TEXT),
+            allowNull: true,
+            defaultValue: [],
+        },
         assigned_to: {
             type: DataTypes.INTEGER,
             allowNull: true,

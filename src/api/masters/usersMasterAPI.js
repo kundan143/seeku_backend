@@ -76,5 +76,9 @@ router.get('/getEmpName', async (req, res, next) => {
 router.get('/getUserEmails', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.getUserEmails());
 });
+router.post('/updateBiometricCode', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.updateBiometricCode(req.body));
+});
+
 
 module.exports = router;

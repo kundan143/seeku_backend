@@ -26,6 +26,7 @@ m.relationMaster = require("../relation_master")(sequelize, DataTypes);
 m.bankMaster = require("../bank_master")(sequelize, DataTypes);
 m.leaveTypeMaster = require("../leave_type_master")(sequelize, DataTypes);
 m.expenseTypeMaster = require("../expense_type_master")(sequelize, DataTypes);
+m.assetMaster = require("../asset_master")(sequelize, DataTypes);
 m.classMaster = require("../class_master")(sequelize, DataTypes);
 m.sectionMaster = require("../section_master")(sequelize, DataTypes);
 m.studentMaster = require("../student_master")(sequelize, DataTypes);
@@ -110,6 +111,10 @@ m.leaveTypeMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 
 m.expenseTypeMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.expenseTypeMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
 m.expenseTypeMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+m.assetMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+m.assetMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
+m.assetMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
 
 m.priorityMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.priorityMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });

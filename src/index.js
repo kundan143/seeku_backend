@@ -34,6 +34,8 @@ const startServer = async () => {
   require("./api/design-costing")(app, jwtTokenValiadtion);
   require("./api/sales")(app, jwtTokenValiadtion);
   require("./api/fee-management")(app, jwtTokenValiadtion);
+  require("./api/quotation")(app, jwtTokenValiadtion);
+  require("./api/file")(app, jwtTokenValiadtion);
 
   app.use((req, res, next) => {
     const logData = {

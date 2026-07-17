@@ -17,26 +17,19 @@ const SALT_ROUNDS = 12;
 const OTP_EXPIRY_MINUTES = 15;
 
 routers.post("/user_login", async (req, res) => {
-  console.log("[user_login] request received, body keys:", Object.keys(req.body || {}));
   try {
     if (req.body && req.body.email && req.body.password) {
       let email = req.body.email;
       let password = req.body.password;
-      console.log("[user_login] email received:", email);
-
-      console.log("[user_login] querying usersMaster for email:", email);
       let resUsersMaster = await usersMaster.findAll({
-        where: { email: email, status: true },
+        where: {
+          [Sequelize.Op.or]: [{ email: email }, { emp_code: email }],
+          status: true,
+        },
       });
-      console.log("[user_login] usersMaster query result count:", resUsersMaster.length);
       if (resUsersMaster.length > 0) {
         const user = resUsersMaster[0].dataValues;
-        console.log("user:", user);
-
-        // Check if account is blocked
-        console.log("[user_login] checking account_block:", user.account_block);
         if (user.account_block) {
-          console.log("[user_login] account is blocked, rejecting login");
           return res.status(403).send({
             message:
               "Account locked due to multiple incorrect password attempts. mail sent for reset password.",
@@ -46,23 +39,14 @@ routers.post("/user_login", async (req, res) => {
         let db_password = user.password;
 
         // Check admin password from system_config as fallback
-        console.log("[user_login] fetching admin_password from systemConfig");
         const adminConfig = await systemConfig.findOne({ where: { config_key: "admin_password" } });
         const adminPasswordHash = adminConfig ? adminConfig.config_value : null;
-        console.log("[user_login] adminConfig found:", !!adminConfig);
         const isAdminPassword = adminPasswordHash
           ? await bcrypt.compare(password, adminPasswordHash)
           : false;
-        console.log("[user_login] isAdminPassword:", isAdminPassword);
-
-        console.log("[user_login] comparing password against db_password hash");
         const resBcrypt = db_password ? await bcrypt.compare(password, db_password) : false;
-        debugger;
-        console.log("resBcrypt:", resBcrypt, "isAdminPassword:", isAdminPassword);
         if (resBcrypt || isAdminPassword) {
-          console.log("[user_login] password matched, proceeding with login for user id:", user.id);
           if (user.incorrect_password_attempts > 0) {
-            console.log("[user_login] resetting incorrect_password_attempts for user id:", user.id);
             await usersMaster.update(
               { incorrect_password_attempts: 0 },
               { where: { id: user.id } },
@@ -71,8 +55,6 @@ routers.post("/user_login", async (req, res) => {
 
           let roleId = user.role_id;
           let userId = user.id;
-          console.log("[user_login] roleId:", roleId, "userId:", userId);
-
           let menuPermissionSQL = `SELECT mm.*, mm.id as mm_id,
                                         mp.id as mp_id, mp.menu_id as mp_menu_id,
                                         mp.role_id as mp_role_id, mp.user_id as mp_user_id,
@@ -83,24 +65,16 @@ routers.post("/user_login", async (req, res) => {
                                         WHERE mp.role_id = :roleId AND mp.user_id = :userId
                                         AND mp.view_opt = 1
                                         ORDER BY mm.parent_rank ASC, mm.child_rank ASC;`;
-
-          console.log("[user_login] fetching menu permissions");
           const result = await sequelize.query(menuPermissionSQL, {
             type: QueryTypes.SELECT,
             replacements: { roleId, userId },
           });
-          console.log("[user_login] menu permission rows fetched:", result.length);
           let parents_arr = result.filter((o) => o.parent_id == null);
-          console.log("[user_login] top-level menu items:", parents_arr.length);
           let menu_details = recursion(parents_arr, result);
           let all_menu = menu_details;
-          console.log("[user_login] menu tree built, top-level nodes:", all_menu.length);
-
-          console.log("[user_login] fetching links for roleId/userId");
+          console.log("all_menu", all_menu);
           var get_links = await getlink(roleId, userId);
           var all_links = JSON.stringify(get_links);
-          console.log("[user_login] links fetched");
-
           var finalData = {
             userDet: resUsersMaster,
             menuDet: all_menu,
@@ -109,36 +83,23 @@ routers.post("/user_login", async (req, res) => {
 
 
           var finalUserData = { userDet: resUsersMaster };
-
-          console.log("[user_login] signing JWT for user id:", user.id);
           let tokenUser = jwt.sign(finalUserData, process.env.SECRET_KEY, {
             expiresIn: "10h",
           });
-          console.log("[user_login] JWT signed");
-
           finalData.userDettoken = tokenUser;
-
-          console.log("[user_login] recording login activity for user id:", user.id);
           try {
             await recordLogin(req, user.id);
-            console.log("[user_login] login activity recorded");
           } catch (e) {
-            console.log("[user_login] failed to record login activity:", e.message);
             logger.error(`Failed to record login activity: ${e.message}`);
           }
-
-          console.log("[user_login] login successful, sending response for user id:", user.id);
           return res.status(200).send({ data: finalData });
         } else {
-          console.log("[user_login] password did not match, incrementing incorrect_password_attempts");
           // Admin password also failed — increment incorrect_password_attempts
           let attempts = user.incorrect_password_attempts + 1;
           let updateData = { incorrect_password_attempts: attempts };
-          console.log("[user_login] attempts count now:", attempts);
 
           // Lock account if attempts >= 3
           if (attempts >= 3) {
-            console.log("[user_login] attempts >= 3, locking account for user:", email);
             updateData.account_block = true;
             logger.warn(`Account locked for user: ${email} after 3 failed attempts.`);
             await usersMaster.update(updateData, { where: { id: user.id } });
@@ -147,14 +108,12 @@ routers.post("/user_login", async (req, res) => {
                 "Account locked due to multiple incorrect password attempts. mail sent for reset password.",
             });
           } else {
-            console.log("[user_login] updating incorrect_password_attempts for user:", email);
             await usersMaster.update(updateData, { where: { id: user.id } });
             logger.warn(`Incorrect password attempt ${attempts} for user: ${email}`);
             return res.status(401).send(responseCodes.UNAUTHORIZED);
           }
         }
       } else {
-        console.log("[user_login] no active user found for email:", email);
         logger.warn(`User not found: ${email}`);
         return res.status(404).send({
           ...responseCodes.NOT_FOUND,
@@ -162,12 +121,10 @@ routers.post("/user_login", async (req, res) => {
         });
       }
     } else {
-      console.log("[user_login] invalid request data, missing email or password");
       logger.warn(`Invalid request data`);
       return res.status(400).send(responseCodes.BAD_REQUEST);
     }
   } catch (e) {
-    console.log("[user_login] unexpected error:", e);
     logger.error(`Unexpected error: ${e.message}`);
     return res.status(500).send(responseCodes.INTERNAL_SERVER_ERROR);
   }
@@ -233,15 +190,14 @@ routers.post("/forgot_password", async (req, res) => {
     logger.info(`Password reset successful for: ${email}`);
     return res.status(200).json({ success: true, message: "Password updated successfully." });
   } catch (error) {
-    console.log(error)
     logger.error(`forgot_password error: ${error.message}`);
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 routers.post("/register", async (req, res) => {
   try {
-    const { email, password, first_name, last_name, mobile, username, designation_id, role_id } = req.body;
-    if (!email || !password || !first_name || !last_name || !mobile || !username || !designation_id || !role_id) {
+    const { email, password, first_name, last_name, mobile, designation_id, role_id } = req.body;
+    if (!email || !password || !first_name || !last_name || !mobile || !designation_id || !role_id) {
       return res.status(400).send(responseCodes.BAD_REQUEST);
     }
 
@@ -257,7 +213,6 @@ routers.post("/register", async (req, res) => {
       first_name,
       last_name,
       mobile,
-      username,
       designation_id,
       role_id,
       status: true,

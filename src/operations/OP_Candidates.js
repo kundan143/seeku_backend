@@ -448,7 +448,6 @@ exports.convertToEmployee = async function (body) {
         last_name: candidate.last_name,
         mobile: candidate.mobile,
         email: candidate.email,
-        username: body.username || candidate.mobile,
         password,
         designation_id: candidate.designation_id,
         department_id: candidate.department_id,

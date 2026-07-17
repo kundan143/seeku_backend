@@ -1,11 +1,21 @@
 const { userDocumentMaster } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
-const { QueryTypes } = require("sequelize");
+const { QueryTypes, Op } = require("sequelize");
 
 exports.addData = async function (body) {
     const t = await sequelize.transaction();
     try {
+        const existing = await userDocumentMaster.findOne({
+            where: { user_id: body.data.user_id, doc_type: body.data.doc_type, status: 1 },
+            transaction: t,
+        });
+        if (existing) {
+            await t.rollback();
+            responseCodes.BAD_REQUEST.data = null;
+            responseCodes.BAD_REQUEST.message = "This employee already has a document of this type. Edit the existing one instead.";
+            return responseCodes.BAD_REQUEST;
+        }
         const result = await userDocumentMaster.create(body.data, { transaction: t });
         await t.commit();
         responseCodes.SUCCESS.data = result.id;
@@ -22,6 +32,23 @@ exports.addData = async function (body) {
 exports.updateData = async function (body) {
     const t = await sequelize.transaction();
     try {
+        if (body.data.user_id && body.data.doc_type) {
+            const existing = await userDocumentMaster.findOne({
+                where: {
+                    id: { [Op.ne]: body.id },
+                    user_id: body.data.user_id,
+                    doc_type: body.data.doc_type,
+                    status: 1,
+                },
+                transaction: t,
+            });
+            if (existing) {
+                await t.rollback();
+                responseCodes.BAD_REQUEST.data = null;
+                responseCodes.BAD_REQUEST.message = "This employee already has a document of this type. Edit the existing one instead.";
+                return responseCodes.BAD_REQUEST;
+            }
+        }
         await userDocumentMaster.update(body.data, { where: { id: body.id }, transaction: t });
         await t.commit();
         responseCodes.SUCCESS.data = null;

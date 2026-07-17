@@ -9,6 +9,7 @@ s.relSalesOrderItems = require("../rel_sales_order_items")(sequelize, DataTypes)
 s.leads = require("../leads")(sequelize, DataTypes);
 s.leadHistory = require("../lead_history")(sequelize, DataTypes);
 s.leadTrackingLog = require("../lead_tracking_log")(sequelize, DataTypes);
+s.quotation = require("../quotation")(sequelize, DataTypes);
 
 // Relations
 
@@ -41,6 +42,10 @@ s.leadHistory.belongsTo(m.usersMaster, {as: 'created_by_user', foreignKey: 'crea
 s.leadTrackingLog.belongsTo(s.leads, {foreignKey: 'lead_id'});
 s.leadTrackingLog.belongsTo(m.stageMaster, {foreignKey: 'stage_id'});
 s.leadTrackingLog.belongsTo(m.usersMaster, {as: 'created_by_user', foreignKey: 'created_by'});
+
+s.quotation.belongsTo(s.leads, {foreignKey: 'lead_id'});
+s.quotation.belongsTo(m.usersMaster, {as: 'created_by_user', foreignKey: 'created_by'});
+s.quotation.belongsTo(m.usersMaster, {as: 'modified_by_user', foreignKey: 'modified_by'});
 
 
 module.exports = s;

@@ -23,10 +23,6 @@ let columns = {
         type: DataTypes.STRING(255),
         allowNull: false
     },
-    username: {
-        type: DataTypes.STRING(255),
-        allowNull: false
-    },
     password: {
         type: DataTypes.TEXT,
         allowNull: false
@@ -199,6 +195,14 @@ let columns = {
     },
     reset_otp_expiry: {
         type: DataTypes.DATE,
+        allowNull: true,
+    },
+    biometric_emp_code: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+    },
+    emp_code: {
+        type: DataTypes.STRING(20),
         allowNull: true,
     },
 };

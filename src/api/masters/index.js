@@ -38,4 +38,5 @@ module.exports = async (app, jwt) => {
 	app.use(ROOT_BASE_URL_MASTERS + '/documentTypeMaster', jwt, apiActivityLogger, require('../masters/documentTypeMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/dropdownMaster', jwt, apiActivityLogger, require('../masters/dropdownMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/dropdownValueMaster', jwt, apiActivityLogger, require('../masters/dropdownValueMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/assetMaster', jwt, apiActivityLogger, require('../masters/assetMasterAPI'));
 };

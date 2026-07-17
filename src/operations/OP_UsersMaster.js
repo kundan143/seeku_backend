@@ -11,6 +11,26 @@ const bcrypt = require("bcryptjs");
 const { copyRoleTemplateToUser } = require("./OP_RolePermission");
 const saltRounds = 10;
 
+// emp_code = YYMMDD + 4-digit sequence that resets daily (e.g. 2607150001)
+async function generateEmpCode(transaction) {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const codeDate = `${now.getFullYear()}-${mm}-${dd}`;
+
+  const rows = await sequelize.query(
+    `INSERT INTO emp_code_counter (code_date, last_seq)
+     VALUES (:codeDate, 1)
+     ON CONFLICT (code_date) DO UPDATE SET last_seq = emp_code_counter.last_seq + 1
+     RETURNING last_seq`,
+    { replacements: { codeDate }, type: QueryTypes.SELECT, transaction }
+  );
+
+  const seq = String(rows[0].last_seq).padStart(4, "0");
+  return `${yy}${mm}${dd}${seq}`;
+}
+
 exports.addData = async function (body) {
   let t;
   try {
@@ -21,12 +41,13 @@ exports.addData = async function (body) {
 
     t = await sequelize.transaction();
 
+    body.userDetails.emp_code = await generateEmpCode(t);
+
     // Hash password
     const password = await bcrypt.hash(body.userDetails.mobile, saltRounds);
     body.userDetails.password = password;
     // body.userDetails.nationality_id = body.userDetails.nationality_id?.id || 1;
     // body.userDetails.role_id = body.userDetails.role_id || 1;
-    // body.userDetails.username = body.userDetails.mobile;
     // Create user
     const userResult = await usersMaster.create(body.userDetails, {
       transaction: t,
@@ -130,6 +151,8 @@ exports.updateData = async function (body) {
     }
 
     t = await sequelize.transaction();
+
+    delete body.userDetails.emp_code;
 
     // Hash password if present
     if (body.userDetails.password != null) {
@@ -547,6 +570,23 @@ exports.getUserEmails = async function () {
   } catch (e) {
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+exports.updateBiometricCode = async function (body) {
+  try {
+     await usersMaster.update(body.data, {
+      where: {
+        id: body.id,
+      },
+    });
+    responseCodes.SUCCESS.data = null;
+    responseCodes.SUCCESS.message = "Biometric Code Updated Successfully";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Update Data";
     return responseCodes.BAD_REQUEST;
   }
 };
