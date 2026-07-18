@@ -321,7 +321,18 @@ async function getlink(role_id, user_id) {
     return [];
   }
 }
-
+routers.post("/default_password", async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({ success: false, message: "Password must be at least 6 characters." });
+    }
+    const hash = await bcrypt.hash(password, SALT_ROUNDS);
+    return res.status(200).json({ success: true, hash });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+}); 
 function groupBy(array, f) {
   let groups = {};
   array.forEach((o) => {

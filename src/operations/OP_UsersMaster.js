@@ -142,6 +142,86 @@ exports.addData = async function (body) {
   }
 };
 
+// Employee bulk import: rows are already parsed & validated client-side
+// (dropdown text resolved to ids), so this just persists them one by one and
+// reports back a per-row outcome. Rows matching an existing email or mobile
+// are skipped as duplicates rather than failed, since there's no DB-level
+// unique constraint on those columns to rely on.
+exports.bulkImport = async function (body) {
+  try {
+    const rows = Array.isArray(body.data) ? body.data : [];
+    const created_by = body.created_by;
+    const created_date = body.created_date;
+
+    if (!rows.length) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "No rows to import.";
+      return responseCodes.BAD_REQUEST;
+    }
+
+    let successCount = 0;
+    let duplicateCount = 0;
+    const failures = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      let t;
+      try {
+        if (!row.first_name || !row.last_name || !row.email || !row.mobile || !row.designation_id || !row.role_id) {
+          throw new Error("First Name, Last Name, Email, Mobile, Designation and Role are required.");
+        }
+
+        const existing = await usersMaster.findOne({
+          where: { [Op.or]: [{ email: row.email }, { mobile: row.mobile }] },
+        });
+        if (existing) {
+          duplicateCount++;
+          continue;
+        }
+
+        t = await sequelize.transaction();
+
+        const emp_code = await generateEmpCode(t);
+        const password = await bcrypt.hash(row.mobile, saltRounds);
+
+        const userResult = await usersMaster.create(
+          {
+            ...row,
+            emp_code,
+            password,
+            created_by,
+            created_date,
+          },
+          { transaction: t }
+        );
+
+        await copyRoleTemplateToUser(
+          { roleId: row.role_id, userId: userResult.id, createdBy: created_by },
+          t
+        );
+
+        await t.commit();
+        successCount++;
+      } catch (e) {
+        if (t) await t.rollback();
+        failures.push({
+          row: row.rowNumber || i + 2,
+          name: `${row.first_name || ''} ${row.last_name || ''}`.trim() || `Row ${i + 2}`,
+          error: e.message || 'Failed to import row.',
+        });
+      }
+    }
+
+    responseCodes.SUCCESS.data = { successCount, duplicateCount, failedCount: failures.length, failures };
+    responseCodes.SUCCESS.message = `Imported ${successCount} of ${rows.length} employee(s) (${duplicateCount} already existed).`;
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to import employees.";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 exports.updateData = async function (body) {
   let t;
   try {
@@ -405,7 +485,7 @@ exports.getOneData = async function (id) {
     usd.special_allowance, usd.bonus, usd.pf_employee, usd.esi_employer,
     usd.professional_tax, usd.other_deduction,usd.gross_salary,
     usd.net_salary, um.first_name, um.last_name, um.middle_name,
-    um.email, um.work_email,um.mobile, um.dob, um.doj,
+    um.email, um.work_email, um.work_mobile, um.mobile, um.dob, um.doj,
     um.current_address, um.permanent_address, gm.gender_name,
     msm.status_name, cm."name" as national_name, etm.emp_type_name,
     dm."name" as department_name, dm2.designation as designation_name,
@@ -417,18 +497,18 @@ exports.getOneData = async function (id) {
     dm.id as department_id, dm2.id as designation_id, um2.id as reporting_manager_id,
     cm.id as nationality_id, ec.contact_name, rm.id as relation_id, bm.id as bank_id
     from users_master as um
-    JOIN gender_master gm on gm.id = um.gender_id
-    JOIN marital_status_master msm on msm.id = um.marital_status_id
-    JOIN country_master cm on cm.id = um.nationality_id
-    JOIN emp_type_master etm on etm.id = um.emp_type_id
-    JOIN department_master dm on dm.id = um.department_id
-    JOIN designation_master dm2 on dm2.id = um.designation_id
+    LEFT JOIN gender_master gm on gm.id = um.gender_id
+    LEFT JOIN marital_status_master msm on msm.id = um.marital_status_id
+    LEFT JOIN country_master cm on cm.id = um.nationality_id
+    LEFT JOIN emp_type_master etm on etm.id = um.emp_type_id
+    LEFT JOIN department_master dm on dm.id = um.department_id
+    LEFT JOIN designation_master dm2 on dm2.id = um.designation_id
     LEFT JOIN users_master um2 on um2.id = um.reporting_manager_id
-    JOIN blood_group_master bgm on bgm.id = um.blood_group_id
-    JOIN emergency_contacts ec on ec.user_id = um.id
-    JOIN relation_master rm on rm.id = ec.relation_id
-    JOIN users_bank_details ubd on ubd.user_id = um.id
-    JOIN bank_master bm on bm.id = ubd.bank_id
+    LEFT JOIN blood_group_master bgm on bgm.id = um.blood_group_id
+    LEFT JOIN emergency_contacts ec on ec.user_id = um.id
+    LEFT JOIN relation_master rm on rm.id = ec.relation_id
+    LEFT JOIN users_bank_details ubd on ubd.user_id = um.id
+    LEFT JOIN bank_master bm on bm.id = ubd.bank_id
     LEFT JOIN users_salary_details usd ON usd.user_id = um.id
 		WHERE um.id = :id
     ORDER BY usd.id DESC
@@ -514,24 +594,24 @@ exports.getTokens = async function (body) {
   }
 };
 
-exports.getCompanyHierarchy = async function (id) {
+exports.getCompanyHierarchy = async function () {
   try {
     let query = {};
     query = `select um.id, concat(um.first_name, ' ', um.last_name) as name, dm.designation as role,
-              dm2."name" as dept, um.email, um.reporting_manager_id as managerId
+              dm2."name" as dept, um.work_email, um.work_mobile, um.reporting_manager_id as managerId
               from users_master as um
               join designation_master dm on dm.id = um.designation_id
               join department_master dm2 on dm2.id = um.department_id
-              where um.status = true and um.id = :id
+              where um.status = true
               ORDER BY um.reporting_manager_id  DESC;`;
     const data = await sequelize.query(query, {
-      type: sequelize.QueryTypes.SELECT,
-      replacements: { id },
+      type: sequelize.QueryTypes.SELECT
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
+    console.log(e, "error");
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;

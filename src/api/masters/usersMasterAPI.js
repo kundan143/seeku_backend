@@ -16,6 +16,11 @@ router.post('/addRow', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.addData(req.body));
 });
 
+// Bulk import — takes the whole parsed row array in one request
+router.post('/bulkImport', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.bulkImport(req.body));
+});
+
 // 3 = Update Row
 router.post('/updateRow', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.updateData(req.body));
@@ -67,8 +72,8 @@ router.post('/updatePassword', async (req, res, next) => {
 router.post('/permissionUser', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.permissionUser(req.body));
 });
-router.post('/getCompanyHierarchy', async (req, res, next) => {
-	return res.send(await OP_UsersMaster.getCompanyHierarchy(req.body.user_id));
+router.get('/getCompanyHierarchy', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.getCompanyHierarchy());
 });
 router.get('/getEmpName', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.getEmpName());

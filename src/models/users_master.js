@@ -117,6 +117,10 @@ let columns = {
         type: DataTypes.STRING(255),
         allowNull: true
     },
+    work_mobile: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
     dob: {
         type: DataTypes.DATEONLY,
         allowNull: true
