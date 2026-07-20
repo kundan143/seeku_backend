@@ -11,5 +11,6 @@ module.exports = async (app, jwt) => {
 	app.use(ROOT_BASE_URL_DEVELOPER_TOOLS + '/linkMaster', jwt, apiActivityLogger, require('../developer-tools/linkMasterAPI'));
 	app.use(ROOT_BASE_URL_DEVELOPER_TOOLS + '/userActivityLog', jwt, apiActivityLogger, require('../developer-tools/userActivityLogAPI'));
 	app.use(ROOT_BASE_URL_DEVELOPER_TOOLS + '/passwordUtil', jwt, apiActivityLogger, require('../developer-tools/passwordUtilAPI'));
+	app.use(ROOT_BASE_URL_DEVELOPER_TOOLS + '/clientBranding', jwt, apiActivityLogger, require('../developer-tools/clientBrandingAPI'));
 	// app.use(ROOT_BASE_URL_DEVELOPER_TOOLS + '/commonService', require('../developer-tools/commonServiceAPI'));
 };

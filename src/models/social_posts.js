@@ -8,7 +8,7 @@ module.exports = function (sequelize, DataTypes) {
       primaryKey: true,
     },
     content: { type: DataTypes.TEXT, allowNull: false },
-    image_path: { type: DataTypes.TEXT, allowNull: true },
+    image_paths: { type: DataTypes.ARRAY(DataTypes.TEXT), allowNull: true },
     share_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     status: { type: DataTypes.SMALLINT, allowNull: false, defaultValue: 1 },
     created_by: {

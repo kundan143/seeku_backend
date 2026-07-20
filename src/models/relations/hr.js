@@ -25,6 +25,7 @@ h.medicalInsurance = require("../medical_insurance")(sequelize, DataTypes);
 h.socialPosts = require("../social_posts")(sequelize, DataTypes);
 h.socialPostLikes = require("../social_post_likes")(sequelize, DataTypes);
 h.socialPostComments = require("../social_post_comments")(sequelize, DataTypes);
+h.socialCommentLikes = require("../social_comment_likes")(sequelize, DataTypes);
 
 
 h.emergencyContacts.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
@@ -72,7 +73,6 @@ h.holidaysMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: '
 
 
 h.companyNewsMaster.belongsTo(m.newsTypeMaster, { foreignKey: 'news_type_id' });
-h.companyNewsMaster.belongsTo(m.departmentMaster, { foreignKey: 'department_id' });
 h.companyNewsMaster.belongsTo(m.priorityMaster, { foreignKey: 'priority_id' });
 h.companyNewsMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 h.companyNewsMaster.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
@@ -132,9 +132,13 @@ h.socialPostLikes.belongsTo(h.socialPosts, { foreignKey: 'post_id' });
 h.socialPostLikes.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
 
 h.socialPostComments.belongsTo(h.socialPosts, { foreignKey: 'post_id' });
+h.socialPostComments.belongsTo(h.socialPostComments, { as: 'parent', foreignKey: 'parent_comment_id' });
 h.socialPostComments.belongsTo(m.usersMaster, { as: 'author', foreignKey: 'created_by' });
 h.socialPostComments.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
 h.socialPostComments.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+h.socialCommentLikes.belongsTo(h.socialPostComments, { foreignKey: 'comment_id' });
+h.socialCommentLikes.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
 
 
 module.exports = h;

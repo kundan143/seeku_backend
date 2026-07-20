@@ -84,6 +84,13 @@ router.get('/getUserEmails', async (req, res, next) => {
 router.post('/updateBiometricCode', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.updateBiometricCode(req.body));
 });
+router.post('/updateProfilePic', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.updateProfilePic(req.body));
+});
+
+router.get('/getEmpNameBankNotAdded', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.getEmpNameBankNotAdded());
+});
 
 
 module.exports = router;

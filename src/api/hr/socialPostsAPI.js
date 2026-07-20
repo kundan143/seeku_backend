@@ -52,9 +52,9 @@ router.post("/share", async (req, res, next) => {
 	return res.send(await OP_SocialPosts.incrementShare(req.body));
 });
 
-// 8 = Comments
+// 8 = Comments (threaded — reply is just a comment with parent_comment_id set)
 router.post("/getComments", async (req, res, next) => {
-	return res.send(await OP_SocialPosts.getComments(req.body.post_id));
+	return res.send(await OP_SocialPosts.getComments({ post_id: req.body.post_id, requesterId: req.headers.userId }));
 });
 router.post("/addComment", async (req, res, next) => {
 	return res.send(await OP_SocialPosts.addComment(req.body));
@@ -70,6 +70,14 @@ router.post("/deleteComment", async (req, res, next) => {
 		return res.send(responseCodes.FORBIDDEN);
 	}
 	return res.send(await OP_SocialPosts.deleteComment(req.body));
+});
+
+// 9 = Comment like / unlike
+router.post("/likeComment", async (req, res, next) => {
+	return res.send(await OP_SocialPosts.likeComment(req.body));
+});
+router.post("/unlikeComment", async (req, res, next) => {
+	return res.send(await OP_SocialPosts.unlikeComment(req.body));
 });
 
 module.exports = router;

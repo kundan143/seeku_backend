@@ -13,10 +13,10 @@ module.exports = function (sequelize, DataTypes) {
       references: { model: "news_type_master", key: "id" },
     },
     description: { type: DataTypes.TEXT, allowNull: true },
-    department_id: {
-      type: DataTypes.INTEGER,
+    department_ids: {
+      type: DataTypes.ARRAY(DataTypes.INTEGER),
       allowNull: true,
-      references: { model: "department_master", key: "id" },
+      defaultValue: [],
     },
     priority_id: {
       type: DataTypes.INTEGER,

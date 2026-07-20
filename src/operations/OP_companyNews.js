@@ -53,15 +53,17 @@ exports.deleteData = async function (body) {
 
 exports.getAllData = async function (body) {
   try {
-    let query = `select pm."name" as priority_name, ntm.name as news_type, 
+    let query = `select pm."name" as priority_name, ntm.name as news_type,
                   concat(um.first_name,' ', um.last_name) as created_name,
                   concat(um2.first_name,' ', um2.last_name) as modified_name,
-                  dm.name as department_name, cn.* from company_news cn 
+                  (select string_agg(dm.name, ', ' order by dm.name)
+                     from department_master dm
+                     where dm.id = ANY(cn.department_ids)) as department_name,
+                  cn.* from company_news cn
                   join priority_master as pm on pm.id = cn.priority_id
-                  join news_type_master ntm on ntm.id = cn.news_type_id 
-                  join department_master dm on dm.id = cn.department_id
-                  join users_master um on um.id = cn.created_by 
-                  left join users_master um2 on um2.id = cn.modified_by 
+                  join news_type_master ntm on ntm.id = cn.news_type_id
+                  join users_master um on um.id = cn.created_by
+                  left join users_master um2 on um2.id = cn.modified_by
                   where cn.status = 1
                   order by id desc;`;
     const data = await sequelize.query(query, {

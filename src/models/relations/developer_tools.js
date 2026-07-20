@@ -12,6 +12,7 @@ dt.linkMaster = require("../link_master")(sequelize, DataTypes);
 dt.userActivityLog = require("../user_activity_log")(sequelize, DataTypes);
 dt.dropdownMaster = require("../dropdown_master")(sequelize, DataTypes);
 dt.dropdownValueMaster = require("../dropdown_value_master")(sequelize, DataTypes);
+dt.clientBrandingMaster = require("../client_branding_master")(sequelize, DataTypes);
 
 
 dt.menuPermission.belongsTo(m.usersMaster, { foreignKey: "created_by" });
@@ -45,5 +46,7 @@ dt.dropdownValueMaster.belongsTo(m.usersMaster, { as: "created_by_user", foreign
 dt.dropdownValueMaster.belongsTo(m.usersMaster, { as: "modified_by_user", foreignKey: "modified_by" });
 dt.dropdownValueMaster.belongsTo(m.usersMaster, { as: "deleted_by_user", foreignKey: "deleted_by" });
 
+dt.clientBrandingMaster.belongsTo(m.usersMaster, { as: "created_by_user", foreignKey: "created_by" });
+dt.clientBrandingMaster.belongsTo(m.usersMaster, { as: "modified_by_user", foreignKey: "modified_by" });
 
 module.exports = dt;

@@ -392,15 +392,23 @@ exports.getAllData = async function (body) {
     let status = ``;
 
     if (body.status == 0) {
-      status = `WHERE account_block = false AND um.status = true`;
+      status = `WHERE um.account_block = false AND um.status = true`;
     } else if (body.status == 1) {
-      status = `WHERE account_block = true`;
+      status = `WHERE um.account_block = true`;
     } else {
       status = ``;
     }
-    var query = `SELECT um.*, concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name
+    var query = `SELECT concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name, 
+    dm.designation as designation_name, dm2."name" as department_name, gm.gender_name, etm.emp_type_name,
+    concat(um2.first_name, ' ',um2.last_name) as manager_name, msm.status_name as marital_status_name, um.*
 		FROM users_master AS um
 		JOIN role_master AS rm ON rm.id = um.role_id
+		join designation_master dm on dm.id = um.designation_id  
+		join department_master dm2 on dm2.id = um.department_id 
+		join gender_master gm on gm.id = um.gender_id 
+		left join users_master um2 on um2.id = um.reporting_manager_id
+    join marital_status_master msm on msm.id = um.marital_status_id 
+		join emp_type_master etm on etm.id = um.emp_type_id 
 		${status} ORDER BY um.id ASC`;
     var data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
@@ -409,7 +417,7 @@ exports.getAllData = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    
+    console.log(e, "error");
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -486,7 +494,7 @@ exports.getOneData = async function (id) {
     usd.professional_tax, usd.other_deduction,usd.gross_salary,
     usd.net_salary, um.first_name, um.last_name, um.middle_name,
     um.email, um.work_email, um.work_mobile, um.mobile, um.dob, um.doj,
-    um.current_address, um.permanent_address, gm.gender_name,
+    um.current_address, um.permanent_address, um.profile_pic, gm.gender_name,
     msm.status_name, cm."name" as national_name, etm.emp_type_name,
     dm."name" as department_name, dm2.designation as designation_name,
     concat(um2.first_name,' ', um2.last_name) as reporting_manager_name,
@@ -636,6 +644,26 @@ exports.getEmpName = async function (id) {
     return responseCodes.BAD_REQUEST;
   }
 };
+exports.getEmpNameBankNotAdded = async function () {
+  try {
+    let query = {};
+    query = `SELECT um.id, concat(um.first_name, ' ', um.last_name) AS name
+              FROM users_master AS um
+              LEFT JOIN users_bank_details ubd ON um.id = ubd.user_id
+              WHERE um.status = true AND ubd.user_id IS NULL
+              ORDER BY um.id DESC;;`;
+    const data = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
 
 exports.getUserEmails = async function () {
   try {
@@ -654,6 +682,23 @@ exports.getUserEmails = async function () {
   }
 };
 exports.updateBiometricCode = async function (body) {
+  try {
+     await usersMaster.update(body.data, {
+      where: {
+        id: body.id,
+      },
+    });
+    responseCodes.SUCCESS.data = null;
+    responseCodes.SUCCESS.message = "Biometric Code Updated Successfully";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Update Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+exports.updateProfilePic = async function (body) {
   try {
      await usersMaster.update(body.data, {
       where: {

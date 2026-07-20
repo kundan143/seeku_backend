@@ -12,6 +12,13 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       references: { model: "social_posts", key: "id" },
     },
+    // Null = top-level comment; otherwise the comment this replies to
+    // (unlimited depth — the frontend nests the flat list client-side).
+    parent_comment_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+      references: { model: "social_post_comments", key: "id" },
+    },
     content: { type: DataTypes.TEXT, allowNull: false },
     status: { type: DataTypes.SMALLINT, allowNull: false, defaultValue: 1 },
     created_by: {
