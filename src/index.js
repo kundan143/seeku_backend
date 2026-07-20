@@ -5,6 +5,7 @@ const loginServiceRouter = require("./services/logingServiceRouter");
 const jwtTokenValiadtion = require("./services/jwtTokenValiadtion");
 const cors = require("cors");
 const logger = require("./services/dailyLogService");
+const { startCronJobs } = require("./cron");
 require("dotenv").config();
 const app = express();
 const PORT = 3000;
@@ -74,6 +75,8 @@ const startServer = async () => {
       logger.info(
         `${process.env.MICRO_SERVICE_NAME} Microservice Listening on port ${process.env.MICRO_SERVICE_PORT}`
       );
+
+      startCronJobs();
     })
     .on("error", (e) => {
       logger.error(e, "ERROR");

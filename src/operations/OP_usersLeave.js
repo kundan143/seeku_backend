@@ -54,6 +54,7 @@ exports.approvalUpdateData = async function (body) {
   try {
     if (body.data.status === 1) {
       // Approved
+      console.log("Approval Update: Approved leave for user_id:");
       const currentYear = new Date().getFullYear();
       const userLeaveBalanceRecord = await userLeaveBalance.findOne({
         where: {
@@ -85,6 +86,8 @@ exports.approvalUpdateData = async function (body) {
       const usedDays = Number(userLeaveBalanceRecord.used_days);
       const totalDays = Number(body.data.total_days);
       const actualLeave = totalDays - holidaysCount;
+      console.log(`Approval Update: User ID ${body.data.user_id}, Leave Type ID ${body.data.leave_type_id}, Total Days: ${totalDays}, Holidays Count: ${holidaysCount}, Actual Leave: ${actualLeave}, Remaining Days: ${remainingDays}, Used Days: ${usedDays}`
+      );
       if (actualLeave <= 0) {
         responseCodes.BAD_REQUEST.data = null;
         responseCodes.BAD_REQUEST.message = "Invalid Leave Duration";
