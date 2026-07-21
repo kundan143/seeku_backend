@@ -88,7 +88,7 @@ exports.getAllData = async function () {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ', um.last_name), sp.other_user_name) AS emp_name,
+             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
              dm.name  AS department_name,
              dm2.designation AS designation_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
@@ -113,7 +113,7 @@ exports.getOneData = async function (id) {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ', um.last_name), sp.other_user_name) AS emp_name,
+             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
              um.mobile, um.email, um.doj,
              dm.name  AS department_name,
              dm2.designation AS designation_name,
@@ -148,7 +148,7 @@ exports.getDataByUserId = async function (user_id) {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ', um.last_name), sp.other_user_name) AS emp_name,
+             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
       FROM salary_payments sp
       LEFT JOIN users_master um ON um.id = sp.user_id
@@ -242,7 +242,7 @@ function prorateEarnings(master, ratio) {
 exports.previewBulkPayroll = async function (payment_month, payment_year) {
   try {
     const query = `
-      SELECT usd.id AS salary_detail_id, usd.user_id, COALESCE(CONCAT(um.first_name, ' ', um.last_name),usd.other_user_name) AS emp_name, 
+      SELECT usd.id AS salary_detail_id, usd.user_id, COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name),usd.other_user_name) AS emp_name, 
       usd.other_user_name, dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance, 
       usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.lta, usd.special_allowance, usd.bonus, usd.pf_employee, 
       usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.loan_deduction, usd.other_deduction, usd.pf_employer, 
@@ -449,7 +449,7 @@ exports.generateSlip = async function (id) {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ', um.last_name), sp.other_user_name) AS emp_name,
+             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
              um.mobile, um.email, um.doj,
              dm.name        AS department_name,
              dm2.designation AS designation_name,
@@ -689,7 +689,7 @@ exports.emailSlip = async function (id, toEmail) {
     // Fetch salary record
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ', um.last_name), sp.other_user_name) AS emp_name,
+             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
              um.email AS emp_email,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
       FROM salary_payments sp
@@ -794,7 +794,7 @@ exports.getDataByMonthYear = async function (payment_month, payment_year) {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ', um.last_name), sp.other_user_name) AS emp_name,
+             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
              dm.name  AS department_name,
              dm2.designation AS designation_name
       FROM salary_payments sp

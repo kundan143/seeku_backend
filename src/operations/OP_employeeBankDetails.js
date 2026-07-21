@@ -60,7 +60,7 @@ exports.deleteData = async function (body) {
 
 exports.getAllData = async function (body) {
   try {
-    var query = `SELECT ubd.id, CONCAT(um.first_name, ' ', um.last_name) AS emp_name, bm.bank_name, 
+    var query = `SELECT ubd.id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name, bm.bank_name, 
                 ubd.ifsc_code, ubd.account_number, ubd.is_active, um.id as user_id, bm.id as bank_id,
                 ubd.branch_name 
                 FROM users_bank_details AS ubd

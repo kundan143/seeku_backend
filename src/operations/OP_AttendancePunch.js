@@ -161,7 +161,7 @@ exports.getAllSummary = async function (body) {
                         ${userFilter}
                     )
                     select coalesce(ps.user_id, rs.user_id) as user_id,
-                      concat(um.first_name, ' ', um.last_name) as user_name,
+                      CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) as user_name,
                       coalesce(ps.punch_date, rs.punch_date) as punch_date,
                       coalesce(ps.first_punch, rs.first_punch) as first_punch,
                       coalesce(ps.last_punch, rs.last_punch) as last_punch,

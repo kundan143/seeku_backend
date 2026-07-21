@@ -87,9 +87,14 @@ router.post('/updateBiometricCode', async (req, res, next) => {
 router.post('/updateProfilePic', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.updateProfilePic(req.body));
 });
-
 router.get('/getEmpNameBankNotAdded', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.getEmpNameBankNotAdded());
+});
+router.get('/getEmpNameDocNotAdded', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.getEmpNameDocNotAdded());
+});
+router.get('/getEmpNameSalMasterNotAdded', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.getEmpNameSalMasterNotAdded());
 });
 
 

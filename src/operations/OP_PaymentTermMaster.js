@@ -79,7 +79,7 @@ exports.getAllData = async function (body) {
     if (body.status != null && body.status != undefined) {
       status = `WHERE ptm.status = ${body.status}`;
     }
-    query = `select concat(um.first_name, ' ', um.last_name) as added_by, 
+    query = `select CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) as added_by, 
 				 concat(um2.first_name, ' ', um2.last_name) as modified_name, 
 				 (CASE
 				 	WHEN (ptm.payment_method = 1) THEN 'TT'

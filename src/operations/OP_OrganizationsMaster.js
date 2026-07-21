@@ -289,7 +289,7 @@ exports.getStatusWiseOrgList = async function (body) {
     let query =
       `SELECT
 					om.*, org_categories.category_type,org_categories_qty.maximum_quantity,
-					CONCAT(um.first_name, ' ', um.last_name) AS zone,
+					CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS zone,
 					org_country.country AS country, org_country.state AS state, org_country.city AS city,
 					(select oa.address from org_addresses oa where oa.address_type='1' and oa.org_id=om.id limit 1) as head_office_address
 					FROM organizations_master om

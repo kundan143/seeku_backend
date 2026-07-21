@@ -84,7 +84,7 @@ exports.getOneData = async function (id) {
              CONCAT(c.first_name, ' ', c.last_name) AS candidate_name,
              dm.name  AS department_name,
              dm2.designation AS designation_name,
-             CONCAT(um.first_name, ' ', um.last_name) AS reporting_manager_name
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS reporting_manager_name
       FROM candidates c
       LEFT JOIN department_master  dm  ON dm.id  = c.department_id
       LEFT JOIN designation_master dm2 ON dm2.id = c.designation_id
@@ -139,7 +139,7 @@ async function fetchCandidateForLetter(id) {
            CONCAT(c.first_name, ' ', c.last_name) AS candidate_name,
            dm.name  AS department_name,
            dm2.designation AS designation_name,
-           CONCAT(um.first_name, ' ', um.last_name) AS reporting_manager_name
+           CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS reporting_manager_name
     FROM candidates c
     LEFT JOIN department_master  dm  ON dm.id  = c.department_id
     LEFT JOIN designation_master dm2 ON dm2.id = c.designation_id

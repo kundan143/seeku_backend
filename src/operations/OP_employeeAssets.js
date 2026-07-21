@@ -8,7 +8,7 @@ exports.getAllData = async function () {
     var query = `select am.id as asset_id, an.field_value as asset_name, am.asset_code,
                     cat.field_value as category_name,
                     ea.id as assignment_id, ea.user_id as assigned_to,
-                    concat(um.first_name, ' ', um.last_name) as assigned_to_name,
+                    CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) as assigned_to_name,
                     ea.assigned_date, ea.remarks as assignment_remarks
                   from asset_master am
                   left join dropdown_value_master an on an.id = am.asset_name_id
@@ -100,7 +100,7 @@ exports.getByUser = async function (user_id) {
 
 exports.getHistory = async function (asset_id) {
   try {
-    var query = `select ea.*, concat(um.first_name, ' ', um.last_name) as assigned_to_name
+    var query = `select ea.*, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) as assigned_to_name
                   from employee_assets ea
                   join users_master um on um.id = ea.user_id
                   where ea.asset_id = :asset_id and ea.is_deleted = 0

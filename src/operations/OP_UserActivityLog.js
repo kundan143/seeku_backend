@@ -120,7 +120,7 @@ exports.getAllData = async function (body) {
 
     const query = `
       SELECT ual.*,
-             CONCAT(um.first_name, ' ', um.last_name) AS user_name
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS user_name
       FROM user_activity_log ual
       LEFT JOIN users_master um ON um.id = ual.user_id
       ${where}

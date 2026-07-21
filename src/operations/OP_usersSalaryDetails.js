@@ -122,7 +122,7 @@ exports.getAllData = async function (body) {
   try {
     const query = `
       SELECT usd.*,
-             CONCAT(um.first_name, ' ', um.last_name) AS emp_name
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
       WHERE usd.status = 1
@@ -142,7 +142,7 @@ exports.getOneData = async function (id) {
   try {
     const query = `
       SELECT usd.*,
-             CONCAT(um.first_name, ' ', um.last_name) AS emp_name,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              um.mobile, um.email, um.doj,
              dm.name  AS department_name,
              dm2.designation AS designation_name
@@ -176,7 +176,7 @@ exports.getDataByUserId = async function (user_id) {
   try {
     const query = `
       SELECT usd.*,
-             CONCAT(um.first_name, ' ', um.last_name) AS emp_name
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
       WHERE usd.user_id = :user_id AND usd.status = 1

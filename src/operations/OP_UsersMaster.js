@@ -605,7 +605,7 @@ exports.getTokens = async function (body) {
 exports.getCompanyHierarchy = async function () {
   try {
     let query = {};
-    query = `select um.id, concat(um.first_name, ' ', um.last_name) as name, dm.designation as role,
+    query = `select um.id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) as name, dm.designation as role,
               dm2."name" as dept, um.work_email, um.work_mobile, um.reporting_manager_id as managerId
               from users_master as um
               join designation_master dm on dm.id = um.designation_id
@@ -628,7 +628,7 @@ exports.getCompanyHierarchy = async function () {
 exports.getEmpName = async function (id) {
   try {
     let query = {};
-    query = `select um.id, concat(um.first_name, ' ', um.last_name) as name
+    query = `select um.id, concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) as name
               from users_master as um
               WHERE um.status = true
               ORDER BY um.id DESC;`;
@@ -647,7 +647,7 @@ exports.getEmpName = async function (id) {
 exports.getEmpNameBankNotAdded = async function () {
   try {
     let query = {};
-    query = `SELECT um.id, concat(um.first_name, ' ', um.last_name) AS name
+    query = `SELECT um.id, concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS name
               FROM users_master AS um
               LEFT JOIN users_bank_details ubd ON um.id = ubd.user_id
               WHERE um.status = true AND ubd.user_id IS NULL
@@ -664,10 +664,30 @@ exports.getEmpNameBankNotAdded = async function () {
     return responseCodes.BAD_REQUEST;
   }
 };
+exports.getEmpNameSalMasterNotAdded = async function () {
+  try {
+    let query = {};
+    query = `SELECT um.id, concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS name
+              FROM users_master AS um
+              LEFT JOIN users_salary_details usd on um.id = usd.user_id 
+              WHERE um.status = true AND usd.user_id IS NULL
+              ORDER BY um.id DESC;`;
+    const data = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
 
 exports.getUserEmails = async function () {
   try {
-    const query = `SELECT um.id, CONCAT(um.first_name, ' ', um.last_name) AS name, um.email
+    const query = `SELECT um.id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS name, um.email
                    FROM users_master AS um
                    WHERE um.status = true AND um.email IS NOT NULL AND um.email != ''
                    ORDER BY um.first_name ASC`;

@@ -82,7 +82,7 @@ exports.getAllData = async function () {
     try {
         const query = `
             SELECT udm.*,
-                   CONCAT(um.first_name, ' ', um.last_name) AS user_name
+                   CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS user_name
             FROM user_document_master udm
             LEFT JOIN users_master um ON um.id = udm.user_id
             WHERE udm.status = 1
@@ -102,7 +102,7 @@ exports.getOneData = async function (id) {
     try {
         const query = `
             SELECT udm.*,
-                   CONCAT(um.first_name, ' ', um.last_name) AS user_name
+                   CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS user_name
             FROM user_document_master udm
             LEFT JOIN users_master um ON um.id = udm.user_id
             WHERE udm.id = :id AND udm.status = 1

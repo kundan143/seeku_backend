@@ -48,7 +48,7 @@ exports.deleteData = async function (body) {
 
 exports.getAllData = async function () {
   try {
-    const query = `select hp.*, concat(um.first_name, ' ', um.last_name) as created_name,
+    const query = `select hp.*, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) as created_name,
                     concat(um2.first_name, ' ', um2.last_name) as modified_name
                   from hr_policy hp
                   join users_master um on um.id = hp.created_by

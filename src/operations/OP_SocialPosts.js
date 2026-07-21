@@ -13,7 +13,7 @@ exports.getAllData = async function ({ limit, offset, search, requesterId }) {
     const query = `
       SELECT sp.id, sp.content, sp.image_paths, sp.share_count, sp.created_date,
              um.id AS author_id, um.first_name, um.last_name,
-             concat(um.first_name, ' ', um.last_name) AS author_name,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS author_name,
              um.profile_pic,
              (SELECT COUNT(*)::int FROM social_post_likes spl WHERE spl.post_id = sp.id) AS like_count,
              (SELECT COUNT(*)::int FROM social_post_comments spc WHERE spc.post_id = sp.id AND spc.status = 1) AS comment_count,
@@ -161,7 +161,7 @@ exports.getComments = async function ({ post_id, requesterId }) {
   try {
     const query = `
       SELECT spc.id, spc.post_id, spc.parent_comment_id, spc.content, spc.created_date, spc.modified_date,
-             um.id AS author_id, concat(um.first_name, ' ', um.last_name) AS author_name,
+             um.id AS author_id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS author_name,
              um.profile_pic,
              (SELECT COUNT(*)::int FROM social_comment_likes scl WHERE scl.comment_id = spc.id) AS like_count,
              EXISTS (
