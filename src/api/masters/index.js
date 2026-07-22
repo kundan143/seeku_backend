@@ -9,6 +9,7 @@ module.exports = async (app, jwt) => {
 	app.use(ROOT_BASE_URL_MASTERS + '/stateMaster', jwt, apiActivityLogger, require('../masters/stateMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/cityMaster', jwt, apiActivityLogger, require('../masters/cityMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/departmentMaster', jwt, apiActivityLogger, require('../masters/departmentMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/officeLocationMaster', jwt, apiActivityLogger, require('../masters/officeLocationMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/wireCableTypeMaster', jwt, apiActivityLogger, require('../masters/wireCableTypesMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/cableCategoryMaster', jwt, apiActivityLogger, require('../masters/cableCategoryMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/cableStageMaster', jwt, apiActivityLogger, require('../masters/cableStageMasterAPI'));

@@ -161,6 +161,14 @@ let columns = {
             key: "id"
         },
     },
+    location_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: "office_location_master",
+            key: "id"
+        },
+    },
     reporting_manager_id: {
         type: DataTypes.INTEGER,
         allowNull: true,

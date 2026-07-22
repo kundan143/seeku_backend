@@ -14,6 +14,7 @@ m.stateMaster = require("../state_master")(sequelize, DataTypes);
 m.cityMaster = require("../city_master")(sequelize, DataTypes);
 m.designationMaster = require("../designation_master")(sequelize, DataTypes);
 m.departmentMaster = require("../department_master")(sequelize, DataTypes);
+m.officeLocationMaster = require("../office_location_master")(sequelize, DataTypes);
 m.wireCableTypesMaster = require("../wire_cable_types_master")(sequelize, DataTypes);
 m.cableCategoryMaster = require("../cable_category_master")(sequelize, DataTypes);
 m.cableStageMaster = require("../cable_stage_master")(sequelize, DataTypes);
@@ -48,6 +49,7 @@ m.documentTypeMaster = require("../document_type_master")(sequelize, DataTypes);
 // m.usersMaster.belongsTo(dt.roleMaster, { foreignKey: 'role_id' });
 m.usersMaster.belongsTo(m.designationMaster, { foreignKey: 'designation_id' });
 m.usersMaster.belongsTo(m.departmentMaster, { foreignKey: 'department_id' });
+m.usersMaster.belongsTo(m.officeLocationMaster, { foreignKey: 'location_id' });
 m.usersMaster.belongsTo(m.usersMaster, { as: 'reporting_manager', foreignKey: 'reporting_manager_id' });
 m.usersMaster.belongsTo(m.genderMaster, { foreignKey: 'gender_id' });
 m.usersMaster.belongsTo(m.bloodGroupMaster, { foreignKey: 'blood_group_id' });
@@ -63,6 +65,9 @@ m.stateMaster.belongsTo(m.countryMaster, { foreignKey: 'country_id' });
 
 m.stateMaster.hasMany(m.cityMaster, { foreignKey: 'state_id' });
 m.cityMaster.belongsTo(m.stateMaster, { foreignKey: 'state_id' });
+
+m.officeLocationMaster.belongsTo(m.cityMaster, { foreignKey: 'city_id' });
+m.officeLocationMaster.belongsTo(m.stateMaster, { foreignKey: 'state_id' });
 
 m.wireCableTypesMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.wireCableTypesMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });

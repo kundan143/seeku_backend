@@ -398,17 +398,18 @@ exports.getAllData = async function (body) {
     } else {
       status = ``;
     }
-    var query = `SELECT concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name, 
-    dm.designation as designation_name, dm2."name" as department_name, gm.gender_name, etm.emp_type_name,
+    var query = `SELECT concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name,
+    dm.designation as designation_name, dm2."name" as department_name, lm."name" as location_name, gm.gender_name, etm.emp_type_name,
     concat(um2.first_name, ' ',um2.last_name) as manager_name, msm.status_name as marital_status_name, um.*
 		FROM users_master AS um
 		JOIN role_master AS rm ON rm.id = um.role_id
-		join designation_master dm on dm.id = um.designation_id  
-		join department_master dm2 on dm2.id = um.department_id 
-		join gender_master gm on gm.id = um.gender_id 
+		join designation_master dm on dm.id = um.designation_id
+		join department_master dm2 on dm2.id = um.department_id
+		left join office_location_master lm on lm.id = um.location_id
+		join gender_master gm on gm.id = um.gender_id
 		left join users_master um2 on um2.id = um.reporting_manager_id
-    join marital_status_master msm on msm.id = um.marital_status_id 
-		join emp_type_master etm on etm.id = um.emp_type_id 
+    join marital_status_master msm on msm.id = um.marital_status_id
+		join emp_type_master etm on etm.id = um.emp_type_id
 		${status} ORDER BY um.id ASC`;
     var data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
@@ -496,14 +497,15 @@ exports.getOneData = async function (id) {
     um.email, um.work_email, um.work_mobile, um.mobile, um.dob, um.doj,
     um.current_address, um.permanent_address, um.profile_pic, gm.gender_name,
     msm.status_name, cm."name" as national_name, etm.emp_type_name,
-    dm."name" as department_name, dm2.designation as designation_name,
+    dm."name" as department_name, dm2.designation as designation_name, lm."name" as location_name,
     concat(um2.first_name,' ', um2.last_name) as reporting_manager_name,
     bgm.blood_group_name, ec.contact_name as emergency_contact_name,
     rm.relation_name as emergency_relation_name, ec.emergency_mobile,
     bm.bank_name, ubd.account_number, ubd.ifsc_code, gm.id as gender_id,
     msm.id as marital_status_id, bgm.id as blood_group_id, etm.id as emp_type_id,
     dm.id as department_id, dm2.id as designation_id, um2.id as reporting_manager_id,
-    cm.id as nationality_id, ec.contact_name, rm.id as relation_id, bm.id as bank_id
+    cm.id as nationality_id, ec.contact_name, rm.id as relation_id, bm.id as bank_id,
+    lm.id as location_id
     from users_master as um
     LEFT JOIN gender_master gm on gm.id = um.gender_id
     LEFT JOIN marital_status_master msm on msm.id = um.marital_status_id
@@ -511,6 +513,7 @@ exports.getOneData = async function (id) {
     LEFT JOIN emp_type_master etm on etm.id = um.emp_type_id
     LEFT JOIN department_master dm on dm.id = um.department_id
     LEFT JOIN designation_master dm2 on dm2.id = um.designation_id
+    LEFT JOIN office_location_master lm on lm.id = um.location_id
     LEFT JOIN users_master um2 on um2.id = um.reporting_manager_id
     LEFT JOIN blood_group_master bgm on bgm.id = um.blood_group_id
     LEFT JOIN emergency_contacts ec on ec.user_id = um.id
