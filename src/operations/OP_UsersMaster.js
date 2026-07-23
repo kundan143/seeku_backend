@@ -3,6 +3,7 @@ const {
   emergencyContacts,
   usersBankDetails,
   usersSalaryDetails,
+  userDocumentMaster,
 } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
@@ -11,13 +12,25 @@ const bcrypt = require("bcryptjs");
 const { copyRoleTemplateToUser } = require("./OP_RolePermission");
 const saltRounds = 10;
 
-// emp_code = YYMMDD + 4-digit sequence that resets daily (e.g. 2607150001)
-async function generateEmpCode(transaction) {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const codeDate = `${now.getFullYear()}-${mm}-${dd}`;
+// emp_code = YYMMDD (from doj) + 4-digit sequence that resets per doj (e.g. 2607150001)
+async function generateEmpCode(transaction, doj) {
+  // Parse doj as a plain date string (not `new Date(doj)`) so the encoded
+  // day doesn't shift with server timezone; fall back to today if unset.
+  const dojStr = doj ? String(doj).slice(0, 10) : null;
+  let yy, mm, dd, codeDate;
+  if (dojStr && /^\d{4}-\d{2}-\d{2}$/.test(dojStr)) {
+    const [y, m, d] = dojStr.split("-");
+    yy = y.slice(-2);
+    mm = m;
+    dd = d;
+    codeDate = dojStr;
+  } else {
+    const now = new Date();
+    yy = String(now.getFullYear()).slice(-2);
+    mm = String(now.getMonth() + 1).padStart(2, "0");
+    dd = String(now.getDate()).padStart(2, "0");
+    codeDate = `${now.getFullYear()}-${mm}-${dd}`;
+  }
 
   const rows = await sequelize.query(
     `INSERT INTO emp_code_counter (code_date, last_seq)
@@ -41,7 +54,7 @@ exports.addData = async function (body) {
 
     t = await sequelize.transaction();
 
-    body.userDetails.emp_code = await generateEmpCode(t);
+    body.userDetails.emp_code = await generateEmpCode(t, body.userDetails.doj);
 
     // Hash password
     const password = await bcrypt.hash(body.userDetails.mobile, saltRounds);
@@ -70,12 +83,8 @@ exports.addData = async function (body) {
     if (body.bankDetails) {
       await usersBankDetails.create(
         {
+          ...body.bankDetails,
           user_id: userResult.id,
-          bank_id: body.bankDetails.bank_id,
-          account_number: body.bankDetails.account_number,
-          ifsc_code: body.bankDetails.ifsc_code,
-          created_by: body.bankDetails.created_by,
-          created_date: body.bankDetails.created_date,
         },
         { transaction: t }
       );
@@ -85,26 +94,24 @@ exports.addData = async function (body) {
     if (body.salaryDetails) {
       await usersSalaryDetails.create(
         {
+          ...body.salaryDetails,
           user_id: userResult.id,
-          basic_salary: body.salaryDetails.basic_salary,
-          hra: body.salaryDetails.hra,
-          conveyance: body.salaryDetails.conveyance,
-          medical_allowance: body.salaryDetails.medical_allowance,
-          special_allowance: body.salaryDetails.special_allowance,
-          bonus: body.salaryDetails.bonus,
-          pf_employer: body.salaryDetails.pf_employer,
-          pf_employee: body.salaryDetails.pf_employee,
-          esi_employer: body.salaryDetails.esi_employer,
-          esi_employee: body.salaryDetails.esi_employee,
-          professional_tax: body.salaryDetails.professional_tax,
-          other_deduction: body.salaryDetails.other_deduction,
-          gross_salary: body.salaryDetails.gross_salary,
-          net_salary: body.salaryDetails.net_salary,
-          created_by: body.salaryDetails.created_by,
-          created_date: body.salaryDetails.created_date,
         },
         { transaction: t }
       );
+    }
+
+    // Documents (multiple)
+    if (Array.isArray(body.documentsDetails)) {
+      for (const doc of body.documentsDetails) {
+        await userDocumentMaster.create(
+          {
+            ...doc,
+            user_id: userResult.id,
+          },
+          { transaction: t }
+        );
+      }
     }
 
     // New user starts with their role's default permission set.
@@ -181,7 +188,7 @@ exports.bulkImport = async function (body) {
 
         t = await sequelize.transaction();
 
-        const emp_code = await generateEmpCode(t);
+        const emp_code = await generateEmpCode(t, row.doj);
         const password = await bcrypt.hash(row.mobile, saltRounds);
 
         const userResult = await usersMaster.create(
@@ -398,7 +405,7 @@ exports.getAllData = async function (body) {
     } else {
       status = ``;
     }
-    var query = `SELECT concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name,
+    var query = `SELECT concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) as full_name,  rm.role_name,
     dm.designation as designation_name, dm2."name" as department_name, lm."name" as location_name, gm.gender_name, etm.emp_type_name,
     concat(um2.first_name, ' ',um2.last_name) as manager_name, msm.status_name as marital_status_name, um.*
 		FROM users_master AS um
@@ -429,7 +436,7 @@ exports.permissionUser = async function (body) {
     let status = ``;
     status = `WHERE status = true and designation_id = :designation_id`
 
-    let query = `SELECT um.*, concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name
+    let query = `SELECT um.*, concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) as full_name,  rm.role_name
 		FROM users_master AS um
 		JOIN role_master AS rm ON rm.id = um.role_id
 		${status} ORDER BY um.id ASC`;
@@ -449,7 +456,7 @@ exports.permissionUser = async function (body) {
 };
 exports.getActiveUsers = async function (body) {
   try {
-    var query = `SELECT um.*, concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name 
+    var query = `SELECT um.*, concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) as full_name,  rm.role_name 
 		FROM users_master AS um 
 		JOIN role_master AS rm ON rm.id = um.role_id 
 		WHERE account_block = false ORDER BY um.id ASC`;
@@ -468,7 +475,7 @@ exports.getActiveUsers = async function (body) {
 };
 exports.getActiveUsersById = async function (body) {
   try {
-    var query = `SELECT um.*, concat(um.first_name, ' ',um.last_name) as full_name,  rm.role_name 
+    var query = `SELECT um.*, concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) as full_name,  rm.role_name 
 		FROM users_master AS um 
 		JOIN role_master AS rm ON rm.id = um.role_id 
 		WHERE um.id != :userId AND account_block = false
@@ -498,7 +505,7 @@ exports.getOneData = async function (id) {
     um.current_address, um.permanent_address, um.profile_pic, gm.gender_name,
     msm.status_name, cm."name" as national_name, etm.emp_type_name,
     dm."name" as department_name, dm2.designation as designation_name, lm."name" as location_name,
-    concat(um2.first_name,' ', um2.last_name) as reporting_manager_name,
+    concat(um2.first_name,' ', um2.middle_name, ' ', um2.last_name) as reporting_manager_name,
     bgm.blood_group_name, ec.contact_name as emergency_contact_name,
     rm.relation_name as emergency_relation_name, ec.emergency_mobile,
     bm.bank_name, ubd.account_number, ubd.ifsc_code, gm.id as gender_id,

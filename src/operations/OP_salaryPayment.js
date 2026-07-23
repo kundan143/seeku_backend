@@ -88,7 +88,7 @@ exports.getAllData = async function () {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              dm.name  AS department_name,
              dm2.designation AS designation_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
@@ -113,7 +113,7 @@ exports.getOneData = async function (id) {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              um.mobile, um.email, um.doj,
              dm.name  AS department_name,
              dm2.designation AS designation_name,
@@ -148,7 +148,7 @@ exports.getDataByUserId = async function (user_id) {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
       FROM salary_payments sp
       LEFT JOIN users_master um ON um.id = sp.user_id
@@ -229,7 +229,7 @@ function round2(n) { return Math.round((Number(n || 0) + Number.EPSILON) * 100) 
 function clampRatio(paidDays, workingDays) {
   return workingDays > 0 ? Math.max(0, Math.min(1, paidDays / workingDays)) : 1;
 }
-const EARNING_KEYS = ['basic_salary','dearness_allowance','city_allowance','hra','conveyance','medical_allowance','lta','special_allowance','bonus'];
+const EARNING_KEYS = ['basic_salary','dearness_allowance','city_allowance','hra','conveyance','medical_allowance','travel_allowance','special_allowance','bonus'];
 // Prorates each earning line by ratio and sums the already-rounded lines for gross_salary,
 // so an itemized earnings table always adds up exactly to the printed Gross Salary.
 function prorateEarnings(master, ratio) {
@@ -242,9 +242,9 @@ function prorateEarnings(master, ratio) {
 exports.previewBulkPayroll = async function (payment_month, payment_year) {
   try {
     const query = `
-      SELECT usd.id AS salary_detail_id, usd.user_id, COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name),usd.other_user_name) AS emp_name, 
-      usd.other_user_name, dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance, 
-      usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.lta, usd.special_allowance, usd.bonus, usd.pf_employee, 
+      SELECT usd.id AS salary_detail_id, usd.user_id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+      dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance,
+      usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.pf_employee,
       usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.loan_deduction, usd.other_deduction, usd.pf_employer, 
       usd.esi_employer, usd.gratuity, usd.gross_salary, usd.total_deductions, usd.net_salary,
         CASE
@@ -351,7 +351,7 @@ exports.processBulkPayroll = async function (body) {
     const masterRows = salaryDetailIds.length
       ? await sequelize.query(
           `SELECT id, basic_salary, dearness_allowance, city_allowance, hra, conveyance,
-                  medical_allowance, lta, special_allowance, bonus, total_deductions,
+                  medical_allowance, travel_allowance, special_allowance, bonus, total_deductions,
                   pf_employee, professional_tax, income_tax, employee_state_insurance,
                   loan_deduction, other_deduction, pf_employer, esi_employer, gratuity
            FROM users_salary_details WHERE id IN (:ids)`,
@@ -410,7 +410,6 @@ exports.processBulkPayroll = async function (body) {
 
       return {
         user_id:                  emp.user_id || null,
-        other_user_name:          emp.other_user_name || null,
         salary_detail_id:         emp.salary_detail_id || null,
         payment_month,
         payment_year,
@@ -449,7 +448,7 @@ exports.generateSlip = async function (id) {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              um.mobile, um.email, um.doj,
              dm.name        AS department_name,
              dm2.designation AS designation_name,
@@ -576,7 +575,7 @@ exports.generateSlip = async function (id) {
         ["HRA",                 sp.hra],
         ["Conveyance",          sp.conveyance],
         ["Medical Allowance",   sp.medical_allowance],
-        ["LTA",                 sp.lta],
+        ["LTA",                 sp.travel_allowance],
         ["Special Allowance",   sp.special_allowance],
         ["Bonus",               sp.bonus],
       ];
@@ -689,7 +688,7 @@ exports.emailSlip = async function (id, toEmail) {
     // Fetch salary record
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              um.email AS emp_email,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
       FROM salary_payments sp
@@ -794,7 +793,7 @@ exports.getDataByMonthYear = async function (payment_month, payment_year) {
   try {
     const query = `
       SELECT sp.*,
-             COALESCE(CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name), sp.other_user_name) AS emp_name,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              dm.name  AS department_name,
              dm2.designation AS designation_name
       FROM salary_payments sp

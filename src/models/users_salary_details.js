@@ -15,10 +15,6 @@ module.exports = function (sequelize, DataTypes) {
                 key: 'id'
             }
         },
-        other_user_name: {
-            type: DataTypes.STRING(255),
-            allowNull: true
-        },
         ctc: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true,
@@ -54,7 +50,7 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true,
             defaultValue: 0.00
         },
-        lta: {
+        travel_allowance: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true,
             defaultValue: 0.00

@@ -6,14 +6,14 @@ const { QueryTypes } = require("sequelize");
 // Fields whose value depends on salary_type (Monthly x 12 <-> Yearly / 12)
 const AMOUNT_FIELDS = [
   "ctc", "basic_salary", "dearness_allowance", "city_allowance", "hra",
-  "conveyance", "medical_allowance", "lta", "special_allowance", "bonus",
+  "conveyance", "medical_allowance", "travel_allowance", "special_allowance", "bonus",
   "pf_employee", "professional_tax", "income_tax", "employee_state_insurance",
   "loan_deduction", "other_deduction", "pf_employer", "esi_employer",
   "gratuity", "gross_salary", "total_deductions", "net_salary",
 ];
 
 // Fields carried over as-is to the auto-generated counterpart row
-const SHARED_FIELDS = ["user_id", "other_user_name", "effective_from", "pay_frequency", "tax_regime"];
+const SHARED_FIELDS = ["user_id", "effective_from", "pay_frequency", "tax_regime"];
 
 function round2(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
