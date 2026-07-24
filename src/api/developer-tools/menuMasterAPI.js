@@ -32,4 +32,9 @@ router.get('/getParentMenus', async (req, res, next) => {
 	return res.send(await OP_MenuMaster.getParentMenus());
 });
 
+// 6 = Set/Change the shared component-lock password
+router.post('/setLockPassword', async (req, res, next) => {
+	return res.send(await OP_MenuMaster.setLockPassword(req.body));
+});
+
 module.exports = router;

@@ -2,10 +2,16 @@ const { menuMaster, menuPermission } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { Op, QueryTypes } = require('sequelize');
+const bcrypt = require("bcryptjs");
+
+const SALT_ROUNDS = 12;
 
 
 exports.addData = async function (body) {
 	try {
+		delete body.data.lock_password_hash;
+		delete body.data.lock_failed_attempts;
+		delete body.data.lock_locked_until;
 		let result = await menuMaster.create(body.data);
 
 		let userQuery = `SELECT * FROM users_master AS um WHERE role_id IN (1) AND account_block = FALSE;`;
@@ -46,6 +52,9 @@ exports.addData = async function (body) {
 
 exports.updateData = async function (body) {
 	try {
+		delete body.data.lock_password_hash;
+		delete body.data.lock_failed_attempts;
+		delete body.data.lock_locked_until;
 		await menuMaster.update(body.data, {
 			where: {
 				id: body.id
@@ -86,7 +95,8 @@ exports.deleteData = async function (body) {
 
 exports.getAllData = async function () {
 	try {
-		var query = `SELECT cm.*, 
+		var query = `SELECT cm.id, cm.parent_id, cm.menu_name, cm.link, cm.icon, cm.parent_rank, cm.child_rank,
+		cm.lock_email, (cm.lock_password_hash IS NOT NULL) AS lock_password_configured,
 		(
 			CASE 
 			WHEN pm.icon IS NULL THEN cm.icon 
@@ -121,15 +131,46 @@ exports.getOneData = async function (id) {
 		var data = await menuMaster.findAll({
 			where: {
 				id: id
-			}
+			},
+			attributes: { exclude: ['lock_password_hash'] }
 		});
 		responseCodes.SUCCESS.data = data;
 		responseCodes.SUCCESS.message = "";
 		return responseCodes.SUCCESS;
 	} catch (e) {
-		
+
 		responseCodes.BAD_REQUEST.data = e;
 		responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+		return responseCodes.BAD_REQUEST;
+	}
+};
+
+exports.setLockPassword = async function (body) {
+	try {
+		const { id, password } = body;
+		if (!id) {
+			responseCodes.BAD_REQUEST.data = null;
+			responseCodes.BAD_REQUEST.message = "Menu id is required";
+			return responseCodes.BAD_REQUEST;
+		}
+		if (!password || typeof password !== "string" || password.length < 6) {
+			responseCodes.BAD_REQUEST.data = null;
+			responseCodes.BAD_REQUEST.message = "Password must be at least 6 characters.";
+			return responseCodes.BAD_REQUEST;
+		}
+
+		const hash = await bcrypt.hash(password, SALT_ROUNDS);
+		await menuMaster.update(
+			{ lock_password_hash: hash, lock_failed_attempts: 0, lock_locked_until: null },
+			{ where: { id } }
+		);
+
+		responseCodes.SUCCESS.data = null;
+		responseCodes.SUCCESS.message = "Lock password set successfully.";
+		return responseCodes.SUCCESS;
+	} catch (e) {
+		responseCodes.BAD_REQUEST.data = e;
+		responseCodes.BAD_REQUEST.message = "Failed to set lock password";
 		return responseCodes.BAD_REQUEST;
 	}
 };

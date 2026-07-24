@@ -25,6 +25,7 @@ module.exports = function (sequelize, DataTypes) {
     pdf_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     approve_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
     mailsent_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+    password_protect_opt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     role_id: {
       type: DataTypes.INTEGER,
       allowNull: true,

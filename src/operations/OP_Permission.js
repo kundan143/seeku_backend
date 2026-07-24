@@ -37,6 +37,7 @@ exports.addData = async function (body) {
         pdf_opt,
         approve_opt,
         mailsent_opt,
+        password_protect_opt,
         role_id,
         created_by,
         modified_by,
@@ -55,7 +56,8 @@ exports.addData = async function (body) {
           existing.excel_opt !== excel_opt ||
           existing.pdf_opt !== pdf_opt ||
           existing.approve_opt !== approve_opt ||
-          existing.mailsent_opt !== mailsent_opt;
+          existing.mailsent_opt !== mailsent_opt ||
+          existing.password_protect_opt !== password_protect_opt;
 
         if (hasChanges) {
           await existing.update({
@@ -67,6 +69,7 @@ exports.addData = async function (body) {
             pdf_opt,
             approve_opt,
             mailsent_opt,
+            password_protect_opt,
             modified_by,
             modified_date: new Date(),
           });
@@ -86,6 +89,7 @@ exports.addData = async function (body) {
           pdf_opt,
           approve_opt,
           mailsent_opt,
+          password_protect_opt,
           role_id,
           created_by,
           created_date: new Date(),
@@ -155,6 +159,7 @@ exports.getPermissions = async function (body) {
       const menuQuery = `SELECT  mm.id, mm.parent_id, mm.menu_name, mm.icon,
                         mm.child_rank,mp.user_id,mp.add_opt,mp.edit_opt, mp.delete_opt,
                         mp.view_opt, mp.excel_opt, mp.pdf_opt, mp.approve_opt, mp.mailsent_opt,
+                        mp.password_protect_opt,
                         mp.role_id, mp.is_active, mm.id as menu_id
                         FROM menu_master mm
                         LEFT JOIN menu_permission mp ON mp.menu_id = mm.id AND mp.user_id = :emp_id

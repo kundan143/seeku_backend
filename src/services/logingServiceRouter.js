@@ -59,7 +59,8 @@ routers.post("/user_login", async (req, res) => {
                                         mp.id as mp_id, mp.menu_id as mp_menu_id,
                                         mp.role_id as mp_role_id, mp.user_id as mp_user_id,
                                         mp.add_opt, mp.edit_opt, mp.view_opt, mp.delete_opt,
-                                        mp.excel_opt, mp.pdf_opt, mp.approve_opt, mp.mailsent_opt
+                                        mp.excel_opt, mp.pdf_opt, mp.approve_opt, mp.mailsent_opt,
+                                        mp.password_protect_opt
                                         FROM menu_master AS mm
                                         LEFT JOIN menu_permission AS mp ON mp.menu_id = mm.id
                                         WHERE mp.role_id = :roleId AND mp.user_id = :userId
@@ -278,6 +279,7 @@ function recursion(get_parents, arr) {
         pdf_opt: elem.pdf_opt,
         approve_opt: elem.approve_opt,
         mailsent_opt: elem.mailsent_opt,
+        password_protect_opt: elem.password_protect_opt,
         items: recursion(child_arr_new, arr),
       };
     } else {
@@ -294,6 +296,7 @@ function recursion(get_parents, arr) {
         pdf_opt: elem.pdf_opt,
         approve_opt: elem.approve_opt,
         mailsent_opt: elem.mailsent_opt,
+        password_protect_opt: elem.password_protect_opt,
       };
     }
     final_arr.push(menu_obj);

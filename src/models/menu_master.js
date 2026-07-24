@@ -42,6 +42,27 @@ module.exports = function (sequelize, DataTypes) {
 			type: DataTypes.INTEGER,
 			allowNull: true,
 			default: 0
+		},
+		lock_email:
+		{
+			type: DataTypes.STRING(255),
+			allowNull: true
+		},
+		lock_password_hash:
+		{
+			type: DataTypes.TEXT,
+			allowNull: true
+		},
+		lock_failed_attempts:
+		{
+			type: DataTypes.INTEGER,
+			allowNull: false,
+			defaultValue: 0
+		},
+		lock_locked_until:
+		{
+			type: DataTypes.DATE,
+			allowNull: true
 		}
 	}, {
 		sequelize,
