@@ -9,7 +9,9 @@ const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { Op, QueryTypes } = require("sequelize");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const { copyRoleTemplateToUser } = require("./OP_RolePermission");
+const transporter = require("../services/mailTransporterService");
 const saltRounds = 10;
 
 // emp_code = YYMMDD (from doj) + 4-digit sequence that resets per doj (e.g. 2607150001)
@@ -59,6 +61,8 @@ exports.addData = async function (body) {
     // Hash password
     const password = await bcrypt.hash(body.userDetails.mobile, saltRounds);
     body.userDetails.password = password;
+    // Default password is the mobile number — force a change on first login
+    body.userDetails.must_change_password = true;
     // body.userDetails.nationality_id = body.userDetails.nationality_id?.id || 1;
     // body.userDetails.role_id = body.userDetails.role_id || 1;
     // Create user
@@ -196,6 +200,7 @@ exports.bulkImport = async function (body) {
             ...row,
             emp_code,
             password,
+            must_change_password: true,
             created_by,
             created_date,
           },
@@ -356,6 +361,8 @@ exports.updatePassword = async function (body) {
   try {
     if (body.data.password != null) {
       body.data.password = await bcrypt.hash(body.data.password, saltRounds);
+      body.data.must_change_password = false;
+      body.data.last_password_modified = new Date();
     }
     await usersMaster.update(body.data, {
       where: {
@@ -512,7 +519,7 @@ exports.getOneData = async function (id) {
     msm.id as marital_status_id, bgm.id as blood_group_id, etm.id as emp_type_id,
     dm.id as department_id, dm2.id as designation_id, um2.id as reporting_manager_id,
     cm.id as nationality_id, ec.contact_name, rm.id as relation_id, bm.id as bank_id,
-    lm.id as location_id
+    lm.id as location_id, um.role_id
     from users_master as um
     LEFT JOIN gender_master gm on gm.id = um.gender_id
     LEFT JOIN marital_status_master msm on msm.id = um.marital_status_id
@@ -728,6 +735,82 @@ exports.updateBiometricCode = async function (body) {
     return responseCodes.BAD_REQUEST;
   }
 };
+// Emails the employee their Employee Code plus a one-time OTP so they can
+// set their own password (via the existing forgot-password flow) before
+// ever logging in — no default/temporary password is ever sent.
+const CREDENTIALS_OTP_EXPIRY_MINUTES = 15;
+exports.sendCredentialsMail = async function (body) {
+  try {
+    if (!body?.id) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "Missing id";
+      return responseCodes.BAD_REQUEST;
+    }
+
+    const user = await usersMaster.findByPk(body.id);
+    if (!user) {
+      responseCodes.NOT_FOUND.data = null;
+      responseCodes.NOT_FOUND.message = "Employee not found";
+      return responseCodes.NOT_FOUND;
+    }
+    if (!user.work_email) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "This employee has no email address on file.";
+      return responseCodes.BAD_REQUEST;
+    }
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpiry = new Date(Date.now() + CREDENTIALS_OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    const loginUrl = process.env.FRONTEND_LOGIN_URL || "http://localhost:4200/#/login";
+    const subject = "Set Up Your Account";
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto;">
+        <h2 style="color: #2d6cdf;">Set Up Your Account</h2>
+        <p>Dear ${user.first_name},</p>
+        <p>An account has been set up for you. Before you can log in, please set your own password using the details below.</p>
+        <table style="border-collapse: collapse; width: 100%; margin: 16px 0; background: #f4f6fb; border-radius: 8px;">
+          <tr>
+            <td style="padding: 12px 16px; color: #555;">Employee Code</td>
+            <td style="padding: 12px 16px; font-weight: bold;">${user.emp_code || "—"}</td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; color: #555; border-top: 1px solid #e0e4ec;">Password</td>
+            <td style="padding: 12px 16px; font-weight: bold; letter-spacing: 2px; border-top: 1px solid #e0e4ec;">${user.mobile || "—"}</td>
+          </tr>
+        </table>
+        <p>This OTP is valid for <strong>${CREDENTIALS_OTP_EXPIRY_MINUTES} minutes</strong>. On the login page, choose <strong>"Forgot Password"</strong> and enter this OTP along with your new password to activate your account.</p>
+        <p style="text-align: center; margin: 24px 0;">
+          <a href="${loginUrl}" style="background: #2d6cdf; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: bold; display: inline-block;">Set Up Password</a>
+        </p>
+        <p style="font-size: 12px; color: #777;">Or copy this link into your browser:<br/>
+        <a href="${loginUrl}" style="color: #2d6cdf;">${loginUrl}</a></p>
+        <p style="color:#999;font-size:11px;">This is a system-generated email. Please do not reply.</p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: process.env.EXP_HANDLE_USER_NAME || "no-reply@seeku.in",
+      to: user.work_email,
+      subject,
+      html,
+    });
+
+    await usersMaster.update(
+      { reset_otp: otp, reset_otp_expiry: otpExpiry, must_change_password: true },
+      { where: { id: body.id } }
+    );
+
+    responseCodes.SUCCESS.data = { sent_to: user.work_email };
+    responseCodes.SUCCESS.message = `Account setup email sent to ${user.work_email}`;
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to send credentials email";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 exports.updateProfilePic = async function (body) {
   try {
      await usersMaster.update(body.data, {

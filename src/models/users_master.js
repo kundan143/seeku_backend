@@ -217,6 +217,11 @@ let columns = {
         type: DataTypes.STRING(20),
         allowNull: true,
     },
+    must_change_password: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+    },
 };
 let optional = {
     sequelize,

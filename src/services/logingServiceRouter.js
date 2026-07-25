@@ -138,7 +138,12 @@ routers.post("/forgot_password_request", async (req, res) => {
       return res.status(400).json({ success: false, message: "Email is required." });
     }
 
-    const user = await usersMaster.findOne({ where: { email, status: true } });
+    const user = await usersMaster.findOne({
+      where: {
+        [Sequelize.Op.or]: [{ email }, { work_email: email }],
+        status: true,
+      },
+    });
     if (!user) {
       // Return success to avoid user enumeration
       return res.status(200).json({ success: true, message: "If that email exists, an OTP has been sent." });
@@ -165,26 +170,39 @@ routers.post("/forgot_password", async (req, res) => {
   try {
     const { email, otp, password } = req.body;
 
-    // if (!email || !otp || !password) {
-    //   return res.status(400).json({ success: false, message: "Email, OTP, and new password are required." });
-    // }
+    if (!email || !otp || !password) {
+      return res.status(400).json({ success: false, message: "Email, OTP, and new password are required." });
+    }
 
-    const user = await usersMaster.findOne({ where: { email, status: true } });
-    // if (!user) {
-    //   return res.status(404).json({ success: false, message: "User not found." });
-    // }
+    const user = await usersMaster.findOne({
+      where: {
+        [Sequelize.Op.or]: [{ email }, { work_email: email }],
+        status: true,
+      },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
 
     const data = user.dataValues;
-    // if (!data.reset_otp || data.reset_otp !== otp) {
-    //   return res.status(400).json({ success: false, message: "Invalid OTP." });
-    // }
-    // if (!data.reset_otp_expiry || new Date() > new Date(data.reset_otp_expiry)) {
-    //   return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
-    // }
+    if (!data.reset_otp || data.reset_otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP." });
+    }
+    if (!data.reset_otp_expiry || new Date() > new Date(data.reset_otp_expiry)) {
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
+    }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
     await usersMaster.update(
-      { password: hashedPassword, reset_otp: null, reset_otp_expiry: null, account_block: false, incorrect_password_attempts: 0, last_password_modified: new Date() },
+      {
+        password: hashedPassword,
+        reset_otp: null,
+        reset_otp_expiry: null,
+        account_block: false,
+        incorrect_password_attempts: 0,
+        must_change_password: false,
+        last_password_modified: new Date(),
+      },
       { where: { id: data.id } }
     );
 

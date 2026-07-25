@@ -69,6 +69,9 @@ router.post('/getActiveUsersById', async (req, res, next) => {
 router.post('/updatePassword', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.updatePassword(req.body));
 });
+router.post('/sendCredentialsMail', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.sendCredentialsMail(req.body));
+});
 router.post('/permissionUser', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.permissionUser(req.body));
 });

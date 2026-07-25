@@ -5,7 +5,7 @@ const router = express.Router();
 
 
 // 1 = Get All Rows
-router.post('/getAllRows', async (req, res, next) => {
+router.get('/getAllRows', async (req, res, next) => {
     return res.send(await OP_Quotation.getAllData());
 });
 
