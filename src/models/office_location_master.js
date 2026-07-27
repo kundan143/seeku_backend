@@ -39,6 +39,19 @@ module.exports = function (sequelize, DataTypes) {
 			type: DataTypes.STRING(20),
 			allowNull: true
 		},
+		phone: {
+			type: DataTypes.STRING(20),
+			allowNull: true
+		},
+		email: {
+			type: DataTypes.STRING(255),
+			allowNull: true
+		},
+		is_registered_office: {
+			type: DataTypes.BOOLEAN,
+			allowNull: false,
+			defaultValue: false
+		},
 		status: {
 			type: DataTypes.INTEGER,
 			allowNull: false,

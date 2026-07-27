@@ -449,7 +449,7 @@ exports.generateSlip = async function (id) {
     const query = `
       SELECT sp.*,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
-             um.mobile, um.email, um.doj,
+             um.mobile, um.email, um.doj, um.emp_code,
              dm.name        AS department_name,
              dm2.designation AS designation_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name,
@@ -457,11 +457,36 @@ exports.generateSlip = async function (id) {
              (SELECT doc_no FROM user_document_master WHERE user_id = sp.user_id AND doc_type = 'UAN'        AND status = 1 LIMIT 1) AS uan_no,
              (SELECT doc_no FROM user_document_master WHERE user_id = sp.user_id AND doc_type = 'PF_ACCOUNT' AND status = 1 LIMIT 1) AS pf_account_no,
              (SELECT ubd.account_number FROM users_bank_details ubd WHERE ubd.user_id = sp.user_id AND ubd.is_active = true LIMIT 1) AS account_number,
-             (SELECT bm.bank_name FROM users_bank_details ubd JOIN bank_master bm ON bm.id = ubd.bank_id WHERE ubd.user_id = sp.user_id AND ubd.is_active = true LIMIT 1) AS bank_name
+             (SELECT bm.bank_name FROM users_bank_details ubd JOIN bank_master bm ON bm.id = ubd.bank_id WHERE ubd.user_id = sp.user_id AND ubd.is_active = true LIMIT 1) AS bank_name,
+             cbm.client_name AS company_name,
+             cbm.client_logo AS company_logo,
+             olm.full_address AS company_address,
+             city.name        AS company_city,
+             state.name       AS company_state,
+             olm.pincode      AS company_pincode,
+             rolm.full_address AS regd_office_address,
+             rolm.city         AS regd_office_city,
+             rolm.state        AS regd_office_state,
+             rolm.pincode      AS regd_office_pincode,
+             rolm.phone        AS regd_office_phone,
+             rolm.email        AS regd_office_email
       FROM salary_payments sp
-      LEFT JOIN users_master       um   ON um.id   = sp.user_id
-      LEFT JOIN department_master  dm   ON dm.id   = um.department_id
-      LEFT JOIN designation_master dm2  ON dm2.id  = um.designation_id
+      LEFT JOIN users_master           um    ON um.id    = sp.user_id
+      LEFT JOIN department_master      dm    ON dm.id    = um.department_id
+      LEFT JOIN designation_master     dm2   ON dm2.id   = um.designation_id
+      LEFT JOIN client_branding_master cbm   ON cbm.id   = 1
+      LEFT JOIN office_location_master olm   ON olm.id   = 1
+      LEFT JOIN city_master            city  ON city.id  = olm.city_id
+      LEFT JOIN state_master           state ON state.id = olm.state_id
+      LEFT JOIN LATERAL (
+        SELECT r.full_address, r.phone, r.email, r.pincode,
+               rc.name AS city, rs.name AS state
+        FROM office_location_master r
+        LEFT JOIN city_master  rc ON rc.id = r.city_id
+        LEFT JOIN state_master rs ON rs.id = r.state_id
+        WHERE r.is_registered_office = true AND r.status = 1
+        LIMIT 1
+      ) rolm ON true
       WHERE sp.id = :id AND sp.status = 1
       LIMIT 1`;
     const rows = await sequelize.query(query, { replacements: { id }, type: QueryTypes.SELECT });
@@ -471,6 +496,15 @@ exports.generateSlip = async function (id) {
       return responseCodes.NOT_FOUND;
     }
     const sp = rows[0];
+
+    const leaveBalanceRows = await sequelize.query(
+      `SELECT ltm.leave_name, ulb.allocated_days, ulb.used_days, ulb.remaining_days
+       FROM user_leave_balance ulb
+       JOIN leave_type_master ltm ON ltm.id = ulb.leave_type_id
+       WHERE ulb.user_id = :user_id AND ulb.year = :year AND ulb.status = 1
+       ORDER BY ltm.leave_name ASC`,
+      { replacements: { user_id: sp.user_id, year: sp.payment_year }, type: QueryTypes.SELECT }
+    );
 
     const slipsDir = path.join(__dirname, "..", "public", "salary-slips");
     if (!fs.existsSync(slipsDir)) fs.mkdirSync(slipsDir, { recursive: true });
@@ -488,8 +522,31 @@ exports.generateSlip = async function (id) {
       const L = 40;                  // left margin
 
       // ── Header ──────────────────────────────────────────────
+      // Letterhead logo, if the client has uploaded one via Client Branding (pdfkit only
+      // embeds JPEG/PNG — SVG/WEBP uploads are skipped rather than crashing slip generation).
+      if (sp.company_logo && /\.(png|jpe?g)$/i.test(sp.company_logo)) {
+        const logoPath = path.join(__dirname, "..", "public", sp.company_logo);
+        if (fs.existsSync(logoPath)) {
+          try {
+            doc.image(logoPath, L, 36, { fit: [42, 42] });
+          } catch (e) {
+            // Corrupt/unsupported image data — fall back to text-only header.
+          }
+        }
+      }
+
       doc.fontSize(18).font("Helvetica-Bold").fillColor("#1a3c5e")
-         .text("ADVANCE CABLE TECHNOLOGIES LIMITED", L, 40, { align: "center", width: W });
+         .text(sp.company_name || "ADVANCE CABLE TECHNOLOGIES LIMITED", L, 40, { align: "center", width: W });
+      if (sp.company_address) {
+        doc.fontSize(8).font("Helvetica").fillColor("#777777")
+           .text(`Corp. Office: ${sp.company_address}`, L, doc.y + 2, { align: "center", width: W });
+      }
+      const cityStatePin = [sp.company_city, sp.company_state].filter(Boolean).join(", ")
+        + (sp.company_pincode ? ` - ${sp.company_pincode}` : "");
+      if (cityStatePin) {
+        doc.fontSize(8).font("Helvetica").fillColor("#777777")
+           .text(cityStatePin, L, doc.y + 1, { align: "center", width: W });
+      }
       doc.fontSize(10).font("Helvetica").fillColor("#555555")
          .text("Pay Slip", L, doc.y + 2, { align: "center", width: W });
 
@@ -511,6 +568,7 @@ exports.generateSlip = async function (id) {
       doc.fontSize(9).font("Helvetica-Bold").fillColor("#333333");
 
       const empInfo = [
+        ["Employee Code",     sp.emp_code || "—"],
         ["Employee Name",   sp.emp_name || "—"],
         ["Department",      sp.department_name  || "—"],
         ["Designation",     sp.designation_name || "—"],
@@ -526,6 +584,7 @@ exports.generateSlip = async function (id) {
         ["PF Account No.",  sp.pf_account_no || "—"],
         ["Bank Name",       sp.bank_name       || "—"],
         ["Account No.",     sp.account_number  || "—"],
+        ["Balance Leave",   leaveBalanceRows.length ? leaveBalanceRows[0].remaining_days : "—"],
       ];
 
       let ey = infoY;
@@ -561,6 +620,44 @@ exports.generateSlip = async function (id) {
       });
       doc.y = attY + 44;
 
+      // ── Leave Balance ─────────────────────────────────────────
+      if (leaveBalanceRows.length) {
+        doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor("#cccccc").lineWidth(0.5).stroke();
+        doc.y += 8;
+        doc.font("Helvetica-Bold").fontSize(10).fillColor("#1a3c5e").text("Leave Balance", L, doc.y);
+        doc.y += 6;
+
+        const lbCols = [W * 0.40, W * 0.20, W * 0.20, W * 0.20];
+        const lbHeaderY = doc.y;
+        doc.rect(L, lbHeaderY, W, 16).fill("#2e6da4");
+        let lx = L;
+        ["Leave Type", "Allocated", "Used", "Remaining"].forEach((h, i) => {
+          doc.font("Helvetica-Bold").fontSize(8).fillColor("#ffffff")
+             .text(h, lx + 6, lbHeaderY + 4, { width: lbCols[i] - 6, align: i === 0 ? "left" : "right" });
+          lx += lbCols[i];
+        });
+
+        let ly = lbHeaderY + 16;
+        leaveBalanceRows.forEach((row, idx) => {
+          const rowBg = idx % 2 === 0 ? "#f9fafb" : "#ffffff";
+          doc.rect(L, ly, W, 16).fill(rowBg);
+          let cx = L;
+          [
+            row.leave_name,
+            Number(row.allocated_days ?? 0).toFixed(1),
+            Number(row.used_days ?? 0).toFixed(1),
+            Number(row.remaining_days ?? 0).toFixed(1),
+          ].forEach((val, i) => {
+            doc.font("Helvetica").fontSize(8).fillColor("#333333")
+               .text(val, cx + 6, ly + 4, { width: lbCols[i] - 6, align: i === 0 ? "left" : "right" });
+            cx += lbCols[i];
+          });
+          ly += 16;
+        });
+        doc.rect(L, lbHeaderY, W, ly - lbHeaderY).strokeColor("#d0dce8").lineWidth(0.5).stroke();
+        doc.y = ly + 10;
+      }
+
       // ── Earnings & Deductions ────────────────────────────────
       const half = W / 2 - 4;
       const earnX = L, dedX = L + W / 2 + 4;
@@ -575,7 +672,7 @@ exports.generateSlip = async function (id) {
         ["HRA",                 sp.hra],
         ["Conveyance",          sp.conveyance],
         ["Medical Allowance",   sp.medical_allowance],
-        ["LTA",                 sp.travel_allowance],
+        ["Travel Allowance",    sp.travel_allowance],
         ["Special Allowance",   sp.special_allowance],
         ["Bonus",               sp.bonus],
       ];
@@ -655,6 +752,25 @@ exports.generateSlip = async function (id) {
       // ── Footer ───────────────────────────────────────────────
       doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor("#cccccc").lineWidth(0.5).stroke();
       doc.y += 8;
+
+      if (sp.regd_office_address) {
+        const regdCityStatePin = [sp.regd_office_city, sp.regd_office_state].filter(Boolean).join(", ")
+          + (sp.regd_office_pincode ? ` - ${sp.regd_office_pincode}` : "");
+        const regdLine = `Regd. Office: ${sp.regd_office_address}` + (regdCityStatePin ? `, ${regdCityStatePin}` : "");
+        doc.fontSize(7).font("Helvetica").fillColor("#999999")
+           .text(regdLine, L, doc.y, { align: "center", width: W });
+        doc.y += 10;
+      }
+      const regdContact = [
+        sp.regd_office_phone ? `Phone: ${sp.regd_office_phone}` : null,
+        sp.regd_office_email ? `Email: ${sp.regd_office_email}` : null,
+      ].filter(Boolean).join("   |   ");
+      if (regdContact) {
+        doc.fontSize(7).font("Helvetica").fillColor("#999999")
+           .text(regdContact, L, doc.y, { align: "center", width: W });
+        doc.y += 10;
+      }
+
       doc.fontSize(7).font("Helvetica").fillColor("#999999")
          .text("This is a system-generated salary slip. No signature required.", L, doc.y, { align: "center", width: W });
       if (sp.remarks) {
