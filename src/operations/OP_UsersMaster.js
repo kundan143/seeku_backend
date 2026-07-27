@@ -519,7 +519,7 @@ exports.getOneData = async function (id) {
     msm.id as marital_status_id, bgm.id as blood_group_id, etm.id as emp_type_id,
     dm.id as department_id, dm2.id as designation_id, um2.id as reporting_manager_id,
     cm.id as nationality_id, ec.contact_name, rm.id as relation_id, bm.id as bank_id,
-    lm.id as location_id, um.role_id
+    lm.id as location_id
     from users_master as um
     LEFT JOIN gender_master gm on gm.id = um.gender_id
     LEFT JOIN marital_status_master msm on msm.id = um.marital_status_id
@@ -776,7 +776,7 @@ exports.sendCredentialsMail = async function (body) {
           </tr>
           <tr>
             <td style="padding: 12px 16px; color: #555; border-top: 1px solid #e0e4ec;">Password</td>
-            <td style="padding: 12px 16px; font-weight: bold; letter-spacing: 2px; border-top: 1px solid #e0e4ec;">${user.mobile || "—"}</td>
+            <td style="padding: 12px 16px; font-weight: bold; letter-spacing: 2px; border-top: 1px solid #e0e4ec;">${user.work_email}</td>
           </tr>
         </table>
         <p>This OTP is valid for <strong>${CREDENTIALS_OTP_EXPIRY_MINUTES} minutes</strong>. On the login page, choose <strong>"Forgot Password"</strong> and enter this OTP along with your new password to activate your account.</p>
