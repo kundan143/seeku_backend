@@ -89,7 +89,7 @@ exports.getAllData = async function () {
     const query = `
       SELECT sp.*,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
-             dm.name  AS department_name,
+             dm.name  AS department_name, um.email,
              dm2.designation AS designation_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
       FROM salary_payments sp
@@ -114,7 +114,7 @@ exports.getOneData = async function (id) {
     const query = `
       SELECT sp.*,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
-             um.mobile, um.email, um.doj,
+             um.mobile, um.email, um.doj,um.email,
              dm.name  AS department_name,
              dm2.designation AS designation_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
@@ -245,8 +245,13 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       SELECT usd.id AS salary_detail_id, usd.user_id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
       dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance,
       usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.pf_employee,
-      usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.loan_deduction, usd.other_deduction, usd.pf_employer, 
-      usd.esi_employer, usd.gratuity, usd.gross_salary, usd.total_deductions, usd.net_salary,
+      usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.other_deduction, usd.pf_employer, usd.net_salary,
+      usd.esi_employer, usd.gratuity, usd.gross_salary, usd.total_deductions,
+      COALESCE((
+        SELECT SUM(lar.monthly_deduction_amount)
+        FROM loan_advance_request lar
+        WHERE lar.employee_id = usd.user_id AND lar.status = 1 AND (lar.amount - lar.total_paid) > 0
+      ), 0) AS monthly_deduction_amount,
         CASE
           WHEN sp.id IS NOT NULL THEN TRUE
           ELSE FALSE
@@ -276,7 +281,9 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       const att = computeAttendance(monthInfo.working_days, leave, 0);
       const ratio = clampRatio(att.paid_days, monthInfo.working_days);
       const { fields, gross_salary } = prorateEarnings(emp, ratio);
-      const total_deductions = Number(emp.total_deductions) || 0;
+      // Active, unsettled loan/advance requests add their monthly installment on
+      // top of whatever's manually entered in Employee Salary Master.
+      const total_deductions = (Number(emp.total_deductions) || 0) + (Number(emp.monthly_deduction_amount) || 0);
       return {
         ...emp,
         ...fields,
@@ -350,11 +357,16 @@ exports.processBulkPayroll = async function (body) {
     const salaryDetailIds = employees.map(e => e.salary_detail_id).filter(Boolean);
     const masterRows = salaryDetailIds.length
       ? await sequelize.query(
-          `SELECT id, basic_salary, dearness_allowance, city_allowance, hra, conveyance,
-                  medical_allowance, travel_allowance, special_allowance, bonus, total_deductions,
-                  pf_employee, professional_tax, income_tax, employee_state_insurance,
-                  loan_deduction, other_deduction, pf_employer, esi_employer, gratuity
-           FROM users_salary_details WHERE id IN (:ids)`,
+          `SELECT usd.id, usd.basic_salary, usd.dearness_allowance, usd.city_allowance, usd.hra, usd.conveyance,
+                  usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.total_deductions,
+                  usd.pf_employee, usd.professional_tax, usd.income_tax, usd.employee_state_insurance,
+                  usd.loan_deduction, usd.other_deduction, usd.pf_employer, usd.esi_employer, usd.gratuity,
+                  COALESCE((
+                    SELECT SUM(lar.monthly_deduction_amount)
+                    FROM loan_advance_request lar
+                    WHERE lar.employee_id = usd.user_id AND lar.status = 1 AND (lar.amount - lar.total_paid) > 0
+                  ), 0) AS monthly_deduction_amount
+           FROM users_salary_details usd WHERE usd.id IN (:ids)`,
           { replacements: { ids: salaryDetailIds }, type: QueryTypes.SELECT, transaction: t }
         )
       : [];
@@ -374,14 +386,17 @@ exports.processBulkPayroll = async function (body) {
         const prorated = prorateEarnings(master, ratio);
         earningFields = prorated.fields;
         gross_salary  = prorated.gross_salary;
-        total_deductions = Number(master.total_deductions) || 0;
+        // Active, unsettled loan/advance requests add their monthly installment on
+        // top of whatever's manually entered in Employee Salary Master.
+        const activeLoanDeduction = Number(master.monthly_deduction_amount) || 0;
+        total_deductions = (Number(master.total_deductions) || 0) + activeLoanDeduction;
         net_salary    = round2(gross_salary - total_deductions);
         deductionFields = {
           pf_employee:              Number(master.pf_employee)              || 0,
           professional_tax:         Number(master.professional_tax)         || 0,
           income_tax:               Number(master.income_tax)               || 0,
           employee_state_insurance: Number(master.employee_state_insurance) || 0,
-          loan_deduction:           Number(master.loan_deduction)           || 0,
+          loan_deduction:           (Number(master.loan_deduction) || 0) + activeLoanDeduction,
           other_deduction:          Number(master.other_deduction)          || 0,
           pf_employer:              Number(master.pf_employer)              || 0,
           esi_employer:             Number(master.esi_employer)             || 0,

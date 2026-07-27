@@ -6,6 +6,7 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_hr + '/emergencyContacts', jwt, apiActivityLogger, require('../hr/emergencyContactsAPI'));
     app.use(ROOT_BASE_URL_hr + '/userLeaves', jwt, apiActivityLogger, require('../hr/userLeavesAPI'));
     app.use(ROOT_BASE_URL_hr + '/employeeExpenses', jwt, apiActivityLogger, require('../hr/employeeExpensesAPI'));
+    app.use(ROOT_BASE_URL_hr + '/loanAdvance', jwt, apiActivityLogger, require('../hr/loanAdvanceAPI'));
     app.use(ROOT_BASE_URL_hr + '/holidaysMaster', jwt, apiActivityLogger, require('../hr/holidaysMasterAPI'));
     app.use(ROOT_BASE_URL_hr + '/companyNews', jwt, apiActivityLogger, require('../hr/companyNewsAPI'));
     app.use(ROOT_BASE_URL_hr + '/userLeaveBalance', jwt, apiActivityLogger, require('../hr/userLeaveBalanceAPI'));

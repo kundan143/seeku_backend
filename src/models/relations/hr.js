@@ -11,6 +11,8 @@ h.salaryPayment = require("../salary_payment")(sequelize, DataTypes);
 h.userLeavesDetails = require("../users_leave_details")(sequelize, DataTypes);
 h.employeeExpenses = require("../employee_expense")(sequelize, DataTypes);
 h.employeeExpenseTravelLegs = require("../employee_expense_travel_leg")(sequelize, DataTypes);
+h.loanAdvanceRequest = require("../loan_advance_request")(sequelize, DataTypes);
+h.loanAdvancePaymentHistory = require("../loan_advance_payment_history")(sequelize, DataTypes);
 h.holidaysMaster = require("../holidays_master")(sequelize, DataTypes);
 h.companyNewsMaster = require("../company_news")(sequelize, DataTypes);
 h.userLeaveBalance = require("../user_leave_balance")(sequelize, DataTypes);
@@ -62,6 +64,14 @@ h.employeeExpenses.belongsTo(m.expenseTypeMaster, { foreignKey: 'expense_type_id
 h.employeeExpenses.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 h.employeeExpenses.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
 h.employeeExpenses.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+h.loanAdvanceRequest.belongsTo(m.usersMaster, { foreignKey: 'employee_id' });
+h.loanAdvanceRequest.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+h.loanAdvanceRequest.belongsTo(m.usersMaster, { as: 'updated_by_user', foreignKey: 'modified_by' });
+h.loanAdvanceRequest.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+h.loanAdvancePaymentHistory.belongsTo(h.loanAdvanceRequest, { foreignKey: 'loan_advance_request_id' });
+h.loanAdvancePaymentHistory.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 
 h.employeeExpenseTravelLegs.belongsTo(h.employeeExpenses, { foreignKey: 'employee_expense_id' });
 h.employeeExpenseTravelLegs.belongsTo(m.cityMaster, { as: 'from_city', foreignKey: 'from_location_id' });
