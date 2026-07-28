@@ -10,6 +10,7 @@ const { Sequelize, Model, DataTypes, QueryTypes } = require("sequelize");
 const { responseCodes } = require("./baseReponse");
 const { sequelize } = require("../config/database-connection");
 const sendOtpMail = require("./sendOtpMail");
+const sendAccountLockedMail = require("./sendAccountLockedMail");
 const { usersMaster, systemConfig } = require("../models");
 const { recordLogin } = require("../operations/OP_UserActivityLog");
 
@@ -101,9 +102,17 @@ routers.post("/user_login", async (req, res) => {
 
           // Lock account if attempts >= 3
           if (attempts >= 3) {
+            console.log(`Locking account for ${email} after ${attempts} failed attempts.`);
             updateData.account_block = true;
             logger.warn(`Account locked for user: ${email} after 3 failed attempts.`);
             await usersMaster.update(updateData, { where: { id: user.id } });
+
+            try {
+              console.log(`Attempting to send account-locked notification for ${user.work_email || user.emp_code}`);
+              await sendAccountLockedMail(user, attempts);
+            } catch (e) {
+              logger.error(`Failed to send account-locked notification: ${e.message}`);
+            }
             return res.status(403).send({
               message:
                 "Account locked due to multiple incorrect password attempts. mail sent for reset password.",

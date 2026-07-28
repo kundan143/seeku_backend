@@ -636,42 +636,42 @@ exports.generateSlip = async function (id) {
       doc.y = attY + 44;
 
       // ── Leave Balance ─────────────────────────────────────────
-      if (leaveBalanceRows.length) {
-        doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor("#cccccc").lineWidth(0.5).stroke();
-        doc.y += 8;
-        doc.font("Helvetica-Bold").fontSize(10).fillColor("#1a3c5e").text("Leave Balance", L, doc.y);
-        doc.y += 6;
+      // if (leaveBalanceRows.length) {
+      //   doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor("#cccccc").lineWidth(0.5).stroke();
+      //   doc.y += 8;
+      //   doc.font("Helvetica-Bold").fontSize(10).fillColor("#1a3c5e").text("Leave Balance", L, doc.y);
+      //   doc.y += 6;
 
-        const lbCols = [W * 0.40, W * 0.20, W * 0.20, W * 0.20];
-        const lbHeaderY = doc.y;
-        doc.rect(L, lbHeaderY, W, 16).fill("#2e6da4");
-        let lx = L;
-        ["Leave Type", "Allocated", "Used", "Remaining"].forEach((h, i) => {
-          doc.font("Helvetica-Bold").fontSize(8).fillColor("#ffffff")
-             .text(h, lx + 6, lbHeaderY + 4, { width: lbCols[i] - 6, align: i === 0 ? "left" : "right" });
-          lx += lbCols[i];
-        });
+      //   const lbCols = [W * 0.40, W * 0.20, W * 0.20, W * 0.20];
+      //   const lbHeaderY = doc.y;
+      //   doc.rect(L, lbHeaderY, W, 16).fill("#2e6da4");
+      //   let lx = L;
+      //   ["Leave Type", "Allocated", "Used", "Remaining"].forEach((h, i) => {
+      //     doc.font("Helvetica-Bold").fontSize(8).fillColor("#ffffff")
+      //        .text(h, lx + 6, lbHeaderY + 4, { width: lbCols[i] - 6, align: i === 0 ? "left" : "right" });
+      //     lx += lbCols[i];
+      //   });
 
-        let ly = lbHeaderY + 16;
-        leaveBalanceRows.forEach((row, idx) => {
-          const rowBg = idx % 2 === 0 ? "#f9fafb" : "#ffffff";
-          doc.rect(L, ly, W, 16).fill(rowBg);
-          let cx = L;
-          [
-            row.leave_name,
-            Number(row.allocated_days ?? 0).toFixed(1),
-            Number(row.used_days ?? 0).toFixed(1),
-            Number(row.remaining_days ?? 0).toFixed(1),
-          ].forEach((val, i) => {
-            doc.font("Helvetica").fontSize(8).fillColor("#333333")
-               .text(val, cx + 6, ly + 4, { width: lbCols[i] - 6, align: i === 0 ? "left" : "right" });
-            cx += lbCols[i];
-          });
-          ly += 16;
-        });
-        doc.rect(L, lbHeaderY, W, ly - lbHeaderY).strokeColor("#d0dce8").lineWidth(0.5).stroke();
-        doc.y = ly + 10;
-      }
+      //   let ly = lbHeaderY + 16;
+      //   leaveBalanceRows.forEach((row, idx) => {
+      //     const rowBg = idx % 2 === 0 ? "#f9fafb" : "#ffffff";
+      //     doc.rect(L, ly, W, 16).fill(rowBg);
+      //     let cx = L;
+      //     [
+      //       row.leave_name,
+      //       Number(row.allocated_days ?? 0).toFixed(1),
+      //       Number(row.used_days ?? 0).toFixed(1),
+      //       Number(row.remaining_days ?? 0).toFixed(1),
+      //     ].forEach((val, i) => {
+      //       doc.font("Helvetica").fontSize(8).fillColor("#333333")
+      //          .text(val, cx + 6, ly + 4, { width: lbCols[i] - 6, align: i === 0 ? "left" : "right" });
+      //       cx += lbCols[i];
+      //     });
+      //     ly += 16;
+      //   });
+      //   doc.rect(L, lbHeaderY, W, ly - lbHeaderY).strokeColor("#d0dce8").lineWidth(0.5).stroke();
+      //   doc.y = ly + 10;
+      // }
 
       // ── Earnings & Deductions ────────────────────────────────
       const half = W / 2 - 4;
