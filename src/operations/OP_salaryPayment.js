@@ -1,12 +1,12 @@
-const { salaryPayment } = require("../models");
+const { salaryPayment, pdfTemplateMaster } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { QueryTypes, Op } = require("sequelize");
-const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 const transporter = require("../services/mailTransporterService");
 const OP_usersLeave = require("./OP_usersLeave");
+const { mergeTemplate, renderHtmlToPdfFile, getLogoDataUri } = require("../services/pdfTemplateService");
 
 exports.addData = async function (body) {
   const t = await sequelize.transaction();
@@ -528,278 +528,92 @@ exports.generateSlip = async function (id) {
     const filePath = path.join(slipsDir, fileName);
     const slipUrl  = `/salary-slips/${fileName}`;
 
-    await new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 40, size: "A4" });
-      const stream = fs.createWriteStream(filePath);
-      doc.pipe(stream);
-
-      const W = doc.page.width - 80; // usable width
-      const L = 40;                  // left margin
-
-      // ── Header ──────────────────────────────────────────────
-      // Letterhead logo, if the client has uploaded one via Client Branding (pdfkit only
-      // embeds JPEG/PNG — SVG/WEBP uploads are skipped rather than crashing slip generation).
-      if (sp.company_logo && /\.(png|jpe?g)$/i.test(sp.company_logo)) {
-        const logoPath = path.join(__dirname, "..", "public", sp.company_logo);
-        if (fs.existsSync(logoPath)) {
-          try {
-            doc.image(logoPath, L, 36, { fit: [42, 42] });
-          } catch (e) {
-            // Corrupt/unsupported image data — fall back to text-only header.
-          }
-        }
-      }
-
-      doc.fontSize(18).font("Helvetica-Bold").fillColor("#1a3c5e")
-         .text(sp.company_name || "ADVANCE CABLE TECHNOLOGIES LIMITED", L, 40, { align: "center", width: W });
-      if (sp.company_address) {
-        doc.fontSize(8).font("Helvetica").fillColor("#777777")
-           .text(`Corp. Office: ${sp.company_address}`, L, doc.y + 2, { align: "center", width: W });
-      }
-      const cityStatePin = [sp.company_city, sp.company_state].filter(Boolean).join(", ")
-        + (sp.company_pincode ? ` - ${sp.company_pincode}` : "");
-      if (cityStatePin) {
-        doc.fontSize(8).font("Helvetica").fillColor("#777777")
-           .text(cityStatePin, L, doc.y + 1, { align: "center", width: W });
-      }
-      doc.fontSize(10).font("Helvetica").fillColor("#555555")
-         .text("Pay Slip", L, doc.y + 2, { align: "center", width: W });
-
-      doc.moveTo(L, doc.y + 8).lineTo(L + W, doc.y + 8).strokeColor("#1a3c5e").lineWidth(1.5).stroke();
-
-      // ── Pay Period ───────────────────────────────────────────
-      doc.y += 14;
-      const monthLabel = (sp.month_name || "").trim();
-      doc.fontSize(11).font("Helvetica-Bold").fillColor("#1a3c5e")
-         .text(`Pay Period: ${monthLabel} ${sp.payment_year}`, L, doc.y, { align: "center", width: W });
-
-      // ── Employee Info ────────────────────────────────────────
-      doc.y += 12;
-      doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor("#cccccc").lineWidth(0.5).stroke();
-      doc.y += 8;
-
-      const col1 = L, col2 = L + W / 2;
-      const infoY = doc.y;
-      doc.fontSize(9).font("Helvetica-Bold").fillColor("#333333");
-
-      const empInfo = [
-        ["Employee Code",     sp.emp_code || "—"],
-        ["Employee Name",   sp.emp_name || "—"],
-        ["Department",      sp.department_name  || "—"],
-        ["Designation",     sp.designation_name || "—"],
-        ["Date of Joining", sp.doj ? new Date(sp.doj).toLocaleDateString("en-IN") : "—"],
-        ["PAN No.",         sp.pan_no        || "—"],
-        ["UAN No.",         sp.uan_no        || "—"],
-        
-      ];
-      const payInfo = [
-        ["Payment Status",  sp.payment_status === 1 ? "Paid" : sp.payment_status === 2 ? "On Hold" : "Pending"],
-        ["Payment Mode",    sp.payment_mode || "—"],
-        ["Payment Date",    sp.payment_date ? new Date(sp.payment_date).toLocaleDateString("en-IN") : "—"],
-        ["PF Account No.",  sp.pf_account_no || "—"],
-        ["Bank Name",       sp.bank_name       || "—"],
-        ["Account No.",     sp.account_number  || "—"],
-        ["Balance Leave",   leaveBalanceRows.length ? leaveBalanceRows[0].remaining_days : "—"],
-      ];
-
-      let ey = infoY;
-      empInfo.forEach(([label, val]) => {
-        doc.font("Helvetica-Bold").fillColor("#555555").fontSize(8).text(label + ":", col1, ey, { width: W / 2 - 10 });
-        doc.font("Helvetica").fillColor("#111111").text(val, col1 + 110, ey, { width: W / 2 - 110 });
-        ey += 16;
+    // Resolve which template to render with: a payment that's already been
+    // generated before keeps using the exact template version it was first
+    // generated with, so editing/replacing the default afterwards can't
+    // retroactively change an already-issued slip.
+    let template = null;
+    if (sp.pdf_template_id) {
+      template = await pdfTemplateMaster.findOne({ where: { id: sp.pdf_template_id }, transaction: t });
+    }
+    if (!template) {
+      template = await pdfTemplateMaster.findOne({
+        where: { template_type: "salary_slip", is_default: true, is_active: 1 },
+        transaction: t
       });
+    }
+    if (!template) {
+      await t.rollback();
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "No active PDF template configured for Salary Slip — set one up in PDF Template Master.";
+      return responseCodes.BAD_REQUEST;
+    }
 
-      let py = infoY;
-      payInfo.forEach(([label, val]) => {
-        doc.font("Helvetica-Bold").fillColor("#555555").fontSize(8).text(label + ":", col2, py, { width: W / 2 - 10 });
-        doc.font("Helvetica").fillColor("#111111").text(val, col2 + 110, py, { width: W / 2 - 110 });
-        py += 16;
-      });
+    const fmt = (n) => "Rs. " + (parseFloat(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+    const monthLabel = (sp.month_name || "").trim();
+    const cityStatePin = [sp.company_city, sp.company_state].filter(Boolean).join(", ")
+      + (sp.company_pincode ? ` - ${sp.company_pincode}` : "");
+    const regdCityStatePin = [sp.regd_office_city, sp.regd_office_state].filter(Boolean).join(", ")
+      + (sp.regd_office_pincode ? ` - ${sp.regd_office_pincode}` : "");
+    const regdOfficeLine = sp.regd_office_address
+      ? `Regd. Office: ${sp.regd_office_address}` + (regdCityStatePin ? `, ${regdCityStatePin}` : "")
+      : "";
+    const regdContactLine = [
+      sp.regd_office_phone ? `Phone: ${sp.regd_office_phone}` : null,
+      sp.regd_office_email ? `Email: ${sp.regd_office_email}` : null,
+    ].filter(Boolean).join("   |   ");
 
-      doc.y = Math.max(ey, py) + 8;
+    const mergeData = {
+      company_name: sp.company_name || "ADVANCE CABLE TECHNOLOGIES LIMITED",
+      company_logo_data_uri: getLogoDataUri(sp.company_logo),
+      company_address: sp.company_address || "",
+      company_city_state_pin: cityStatePin,
+      month_name: monthLabel,
+      payment_year: sp.payment_year,
+      emp_code: sp.emp_code || "—",
+      emp_name: sp.emp_name || "—",
+      department_name: sp.department_name || "—",
+      designation_name: sp.designation_name || "—",
+      doj_formatted: sp.doj ? new Date(sp.doj).toLocaleDateString("en-IN") : "—",
+      pan_no: sp.pan_no || "—",
+      uan_no: sp.uan_no || "—",
+      payment_status_label: sp.payment_status === 1 ? "Paid" : sp.payment_status === 2 ? "On Hold" : "Pending",
+      payment_mode: sp.payment_mode || "—",
+      payment_date_formatted: sp.payment_date ? new Date(sp.payment_date).toLocaleDateString("en-IN") : "—",
+      pf_account_no: sp.pf_account_no || "—",
+      bank_name: sp.bank_name || "—",
+      account_number: sp.account_number || "—",
+      remaining_days: leaveBalanceRows.length ? leaveBalanceRows[0].remaining_days : "—",
+      working_days: sp.working_days ?? 0,
+      present_days: sp.present_days ?? 0,
+      paid_days: sp.paid_days ?? 0,
+      basic_salary_fmt: fmt(sp.basic_salary),
+      dearness_allowance_fmt: fmt(sp.dearness_allowance),
+      city_allowance_fmt: fmt(sp.city_allowance),
+      hra_fmt: fmt(sp.hra),
+      conveyance_fmt: fmt(sp.conveyance),
+      medical_allowance_fmt: fmt(sp.medical_allowance),
+      travel_allowance_fmt: fmt(sp.travel_allowance),
+      special_allowance_fmt: fmt(sp.special_allowance),
+      bonus_fmt: fmt(sp.bonus),
+      pf_employee_fmt: fmt(sp.pf_employee),
+      professional_tax_fmt: fmt(sp.professional_tax),
+      income_tax_fmt: fmt(sp.income_tax),
+      employee_state_insurance_fmt: fmt(sp.employee_state_insurance),
+      loan_deduction_fmt: fmt(sp.loan_deduction),
+      other_deduction_fmt: fmt(sp.other_deduction),
+      gross_salary_fmt: fmt(sp.gross_salary),
+      total_deductions_fmt: fmt(sp.total_deductions),
+      net_salary_fmt: fmt(sp.net_salary),
+      regd_office_line: regdOfficeLine,
+      regd_contact_line: regdContactLine,
+      remarks_line: sp.remarks ? `Remarks: ${sp.remarks}` : "",
+    };
 
-      // ── Attendance ───────────────────────────────────────────
-      doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor("#cccccc").lineWidth(0.5).stroke();
-      doc.y += 8;
-      doc.font("Helvetica-Bold").fontSize(10).fillColor("#1a3c5e").text("Attendance", L, doc.y);
-      doc.y += 6;
+    const mergedHtml = mergeTemplate(template.html_content, mergeData);
+    await renderHtmlToPdfFile(mergedHtml, filePath);
 
-      const attCols = [["Working Days", sp.working_days], ["Present Days", sp.present_days], ["Paid Days", sp.paid_days]];
-      const attW = W / 3;
-      const attY = doc.y;
-      attCols.forEach(([label, val], i) => {
-        const x = L + i * attW;
-        doc.roundedRect(x + 2, attY, attW - 8, 34, 4).fillAndStroke("#f0f4f8", "#d0dce8");
-        doc.font("Helvetica-Bold").fontSize(8).fillColor("#555555").text(label, x + 6, attY + 5, { width: attW - 14 });
-        doc.font("Helvetica-Bold").fontSize(13).fillColor("#1a3c5e").text(String(val ?? 0), x + 6, attY + 17, { width: attW - 14 });
-      });
-      doc.y = attY + 44;
-
-      // ── Leave Balance ─────────────────────────────────────────
-      // if (leaveBalanceRows.length) {
-      //   doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor("#cccccc").lineWidth(0.5).stroke();
-      //   doc.y += 8;
-      //   doc.font("Helvetica-Bold").fontSize(10).fillColor("#1a3c5e").text("Leave Balance", L, doc.y);
-      //   doc.y += 6;
-
-      //   const lbCols = [W * 0.40, W * 0.20, W * 0.20, W * 0.20];
-      //   const lbHeaderY = doc.y;
-      //   doc.rect(L, lbHeaderY, W, 16).fill("#2e6da4");
-      //   let lx = L;
-      //   ["Leave Type", "Allocated", "Used", "Remaining"].forEach((h, i) => {
-      //     doc.font("Helvetica-Bold").fontSize(8).fillColor("#ffffff")
-      //        .text(h, lx + 6, lbHeaderY + 4, { width: lbCols[i] - 6, align: i === 0 ? "left" : "right" });
-      //     lx += lbCols[i];
-      //   });
-
-      //   let ly = lbHeaderY + 16;
-      //   leaveBalanceRows.forEach((row, idx) => {
-      //     const rowBg = idx % 2 === 0 ? "#f9fafb" : "#ffffff";
-      //     doc.rect(L, ly, W, 16).fill(rowBg);
-      //     let cx = L;
-      //     [
-      //       row.leave_name,
-      //       Number(row.allocated_days ?? 0).toFixed(1),
-      //       Number(row.used_days ?? 0).toFixed(1),
-      //       Number(row.remaining_days ?? 0).toFixed(1),
-      //     ].forEach((val, i) => {
-      //       doc.font("Helvetica").fontSize(8).fillColor("#333333")
-      //          .text(val, cx + 6, ly + 4, { width: lbCols[i] - 6, align: i === 0 ? "left" : "right" });
-      //       cx += lbCols[i];
-      //     });
-      //     ly += 16;
-      //   });
-      //   doc.rect(L, lbHeaderY, W, ly - lbHeaderY).strokeColor("#d0dce8").lineWidth(0.5).stroke();
-      //   doc.y = ly + 10;
-      // }
-
-      // ── Earnings & Deductions ────────────────────────────────
-      const half = W / 2 - 4;
-      const earnX = L, dedX = L + W / 2 + 4;
-      const tableTop = doc.y;
-
-      const fmt = (n) => "Rs. " + (parseFloat(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-
-      const earnings = [
-        ["Basic Salary",        sp.basic_salary],
-        ["Dearness Allowance",  sp.dearness_allowance],
-        ["City Allowance",      sp.city_allowance],
-        ["HRA",                 sp.hra],
-        ["Conveyance",          sp.conveyance],
-        ["Medical Allowance",   sp.medical_allowance],
-        ["Travel Allowance",    sp.travel_allowance],
-        ["Special Allowance",   sp.special_allowance],
-        ["Bonus",               sp.bonus],
-      ];
-      const deductions = [
-        ["PF (Employee)",       sp.pf_employee],
-        ["Professional Tax",    sp.professional_tax],
-        ["Income Tax (TDS)",    sp.income_tax],
-        ["ESI (Employee)",      sp.employee_state_insurance],
-        ["Loan / Advance",      sp.loan_deduction],
-        ["Other Deductions",    sp.other_deduction],
-      ];
-
-      const drawTable = (title, rows, xStart, bgHeader) => {
-        doc.rect(xStart, tableTop, half, 20).fill(bgHeader);
-        doc.font("Helvetica-Bold").fontSize(9).fillColor("#ffffff")
-           .text(title, xStart + 6, tableTop + 6, { width: half - 6 });
-
-        let ty = tableTop + 20;
-        rows.forEach(([label, val], idx) => {
-          const rowBg = idx % 2 === 0 ? "#f9fafb" : "#ffffff";
-          doc.rect(xStart, ty, half, 16).fill(rowBg);
-          doc.font("Helvetica").fontSize(8).fillColor("#333333")
-             .text(label, xStart + 6, ty + 4, { width: half / 2 - 6 });
-          doc.font("Helvetica").fontSize(8).fillColor("#111111")
-             .text(fmt(val), xStart + half / 2, ty + 4, { width: half / 2 - 6, align: "right" });
-          ty += 16;
-        });
-        doc.rect(xStart, tableTop, half, ty - tableTop).strokeColor("#d0dce8").lineWidth(0.5).stroke();
-        return ty;
-      };
-
-      const earnEnd = drawTable("EARNINGS", earnings, earnX, "#2e6da4");
-      drawTable("DEDUCTIONS", deductions, dedX, "#c0392b");
-
-      doc.y = Math.max(earnEnd, tableTop + 20 + deductions.length * 16) + 10;
-
-      // ── Employer Contributions ───────────────────────────────
-      // const empContrib = [
-      //   ["PF (Employer)", sp.pf_employer],
-      //   ["ESI (Employer)", sp.esi_employer],
-      //   ["Gratuity", sp.gratuity],
-      // ];
-      // const ecY = doc.y;
-      // doc.rect(L, ecY, W, 20).fill("#1a3c5e");
-      // doc.font("Helvetica-Bold").fontSize(9).fillColor("#ffffff").text("EMPLOYER CONTRIBUTIONS", L + 6, ecY + 6, { width: W });
-      // let ecRow = ecY + 20;
-      // const ecColW = W / empContrib.length;
-      // empContrib.forEach(([label, val], i) => {
-      //   doc.rect(L + i * ecColW, ecRow, ecColW, 16).fill(i % 2 === 0 ? "#f9fafb" : "#ffffff");
-      //   doc.font("Helvetica").fontSize(8).fillColor("#333333")
-      //      .text(label, L + i * ecColW + 6, ecRow + 4, { width: ecColW / 2 - 6 });
-      //   doc.font("Helvetica").fontSize(8).fillColor("#111111")
-      //      .text(fmt(val), L + i * ecColW + ecColW / 2, ecRow + 4, { width: ecColW / 2 - 6, align: "right" });
-      // });
-      // doc.rect(L, ecY, W, 36).strokeColor("#d0dce8").lineWidth(0.5).stroke();
-      // doc.y = ecRow + 24;
-
-      // ── Summary ──────────────────────────────────────────────
-      doc.y += 6;
-      const summaryData = [
-        ["Gross Salary",     sp.gross_salary,     "#2e6da4"],
-        ["Total Deductions", sp.total_deductions,  "#c0392b"],
-        ["Net Salary",       sp.net_salary,        "#1a7a4c"],
-      ];
-      const sW = W / 3;
-      const summaryY = doc.y;
-      summaryData.forEach(([label, val, color], i) => {
-        const sx = L + i * sW;
-        doc.roundedRect(sx + 2, summaryY, sW - 6, 44, 4).fillAndStroke(color, color);
-        doc.font("Helvetica-Bold").fontSize(8).fillColor("#ffffff")
-           .text(label, sx + 8, summaryY + 6, { width: sW - 14 });
-        doc.font("Helvetica-Bold").fontSize(13).fillColor("#ffffff")
-           .text(fmt(val), sx + 8, summaryY + 20, { width: sW - 14 });
-      });
-      doc.y = summaryY + 54;
-
-      // ── Footer ───────────────────────────────────────────────
-      doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor("#cccccc").lineWidth(0.5).stroke();
-      doc.y += 8;
-
-      if (sp.regd_office_address) {
-        const regdCityStatePin = [sp.regd_office_city, sp.regd_office_state].filter(Boolean).join(", ")
-          + (sp.regd_office_pincode ? ` - ${sp.regd_office_pincode}` : "");
-        const regdLine = `Regd. Office: ${sp.regd_office_address}` + (regdCityStatePin ? `, ${regdCityStatePin}` : "");
-        doc.fontSize(7).font("Helvetica").fillColor("#999999")
-           .text(regdLine, L, doc.y, { align: "center", width: W });
-        doc.y += 10;
-      }
-      const regdContact = [
-        sp.regd_office_phone ? `Phone: ${sp.regd_office_phone}` : null,
-        sp.regd_office_email ? `Email: ${sp.regd_office_email}` : null,
-      ].filter(Boolean).join("   |   ");
-      if (regdContact) {
-        doc.fontSize(7).font("Helvetica").fillColor("#999999")
-           .text(regdContact, L, doc.y, { align: "center", width: W });
-        doc.y += 10;
-      }
-
-      doc.fontSize(7).font("Helvetica").fillColor("#999999")
-         .text("This is a system-generated salary slip. No signature required.", L, doc.y, { align: "center", width: W });
-      if (sp.remarks) {
-        doc.y += 10;
-        doc.fontSize(8).font("Helvetica-Bold").fillColor("#555555").text("Remarks: ", L, doc.y, { continued: true });
-        doc.font("Helvetica").fillColor("#333333").text(sp.remarks);
-      }
-
-      doc.end();
-      stream.on("finish", resolve);
-      stream.on("error",  reject);
-    });
-
-    await salaryPayment.update({ slip_url: slipUrl }, { where: { id }, transaction: t });
+    await salaryPayment.update({ slip_url: slipUrl, pdf_template_id: template.id }, { where: { id }, transaction: t });
     await t.commit();
 
     responseCodes.SUCCESS.data = { slip_url: slipUrl };

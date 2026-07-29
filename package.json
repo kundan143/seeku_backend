@@ -7,8 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon npm start",
     "dev-start": "sudo -E pm2 start src/index.js -i max --name=app",
-    "prod-start": "sudo -E pm2 start src/index.js -i max --name=app",
-    "migrate:baseline": "node src/scripts/baseline-migrations.js"
+    "prod-start": "sudo -E pm2 start src/index.js -i max --name=app"
   },
   "keywords": [],
   "author": "",
@@ -35,6 +34,7 @@
     "pdfkit": "^0.19.1",
     "pg": "^8.16.3",
     "pg-hstore": "^2.3.4",
+    "puppeteer": "^24.43.1",
     "pusher": "^5.2.0",
     "redis": "^3.1.2",
     "request": "^2.88.2",

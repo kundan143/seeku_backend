@@ -19,16 +19,12 @@ const path = require("path");
 const SERVER = process.env.SERVER || `LOCAL`;
 
 const startServer = async () => {
-  // NOTE: auto-run is disabled until `npm run migrate:baseline` has been run
-  // once against this database — see src/scripts/baseline-migrations.js.
-  // Re-enable this block only after that one-time step is done, otherwise
-  // every historical src/sql/*.sql file will be replayed and crash on startup.
-  // try {
-  //   await runMigrations();
-  // } catch (e) {
-  //   logger.error(e, "MIGRATION_ERROR");
-  //   process.exit(1);
-  // }
+  try {
+    await runMigrations();
+  } catch (e) {
+    logger.error(e, "MIGRATION_ERROR");
+    process.exit(1);
+  }
 
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ extended: true, limit: "100mb" }));

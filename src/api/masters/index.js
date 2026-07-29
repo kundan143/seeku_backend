@@ -40,4 +40,5 @@ module.exports = async (app, jwt) => {
 	app.use(ROOT_BASE_URL_MASTERS + '/dropdownMaster', jwt, apiActivityLogger, require('../masters/dropdownMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/dropdownValueMaster', jwt, apiActivityLogger, require('../masters/dropdownValueMasterAPI'));
 	app.use(ROOT_BASE_URL_MASTERS + '/assetMaster', jwt, apiActivityLogger, require('../masters/assetMasterAPI'));
+	app.use(ROOT_BASE_URL_MASTERS + '/pdfTemplateMaster', jwt, apiActivityLogger, require('../masters/pdfTemplateMasterAPI'));
 };

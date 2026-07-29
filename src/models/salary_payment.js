@@ -207,6 +207,10 @@ module.exports = function (sequelize, DataTypes) {
             type: DataTypes.STRING(500),
             allowNull: true
         },
+        pdf_template_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
     };
     let optional = {
         sequelize,
