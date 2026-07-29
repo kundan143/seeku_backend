@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon npm start",
     "dev-start": "sudo -E pm2 start src/index.js -i max --name=app",
-    "prod-start": "sudo -E pm2 start src/index.js -i max --name=app"
+    "prod-start": "sudo -E pm2 start src/index.js -i max --name=app",
+    "migrate:baseline": "node src/scripts/baseline-migrations.js"
   },
   "keywords": [],
   "author": "",

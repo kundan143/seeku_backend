@@ -5,6 +5,7 @@ const loginServiceRouter = require("./services/logingServiceRouter");
 const jwtTokenValiadtion = require("./services/jwtTokenValiadtion");
 const cors = require("cors");
 const logger = require("./services/dailyLogService");
+const { runMigrations } = require("./services/migrationService");
 const { startCronJobs } = require("./cron");
 require("dotenv").config();
 const app = express();
@@ -18,6 +19,17 @@ const path = require("path");
 const SERVER = process.env.SERVER || `LOCAL`;
 
 const startServer = async () => {
+  // NOTE: auto-run is disabled until `npm run migrate:baseline` has been run
+  // once against this database — see src/scripts/baseline-migrations.js.
+  // Re-enable this block only after that one-time step is done, otherwise
+  // every historical src/sql/*.sql file will be replayed and crash on startup.
+  // try {
+  //   await runMigrations();
+  // } catch (e) {
+  //   logger.error(e, "MIGRATION_ERROR");
+  //   process.exit(1);
+  // }
+
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ extended: true, limit: "100mb" }));
   app.use(cors());

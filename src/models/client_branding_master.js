@@ -14,6 +14,30 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.STRING(255),
       allowNull: true,
     },
+    client_website: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    client_favicon: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    client_primary_color: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
+    client_tagline: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    support_email: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    support_phone: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
     created_by: {
       type: DataTypes.INTEGER,
       allowNull: true,
