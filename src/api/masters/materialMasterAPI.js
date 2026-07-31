@@ -35,4 +35,14 @@ router.post('/getMaterialByCableStage', async (req, res, next) => {
     return res.send(await OP_MaterialMaster.getMaterialByCableStage(req.body.cable_stage_id));
 });
 
+// 6 = Get History
+router.post('/getHistory', async (req, res, next) => {
+    return res.send(await OP_MaterialMaster.getHistory(req.body.id));
+});
+
+// 7 = Bulk Create (Import)
+router.post('/bulkCreate', async (req, res, next) => {
+    return res.send(await OP_MaterialMaster.bulkCreate(req.body));
+});
+
 module.exports = router;

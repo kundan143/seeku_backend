@@ -31,6 +31,22 @@ module.exports = function (sequelize, DataTypes) {
         key: "id"
       },
     },
+    rate: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true
+    },
+    density: {
+      type: DataTypes.DECIMAL(12, 3),
+      allowNull: true
+    },
+    material_category_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "dropdown_value_master",
+        key: "id"
+      },
+    },
     status: {
       type: DataTypes.DOUBLE,
       allowNull: true,

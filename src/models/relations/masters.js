@@ -21,6 +21,7 @@ m.cableStageMaster = require("../cable_stage_master")(sequelize, DataTypes);
 m.stageMaster = require("../stage_master")(sequelize, DataTypes);
 m.unitTypeMaster = require("../unit_type_master")(sequelize, DataTypes);
 m.materialMaster = require("../material_master")(sequelize, DataTypes);
+m.materialMasterHistory = require("../material_master_history")(sequelize, DataTypes);
 m.paymentTermMaster = require("../payment_term_master")(sequelize, DataTypes);
 m.itemMaster = require("../item_master")(sequelize, DataTypes);
 m.relationMaster = require("../relation_master")(sequelize, DataTypes);
@@ -88,6 +89,9 @@ m.materialMaster.belongsTo(m.cableStageMaster, { foreignKey: 'cable_stage_id' })
 m.materialMaster.belongsTo(m.unitTypeMaster, { foreignKey: 'uom_id' });
 m.materialMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.materialMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+
+m.materialMasterHistory.belongsTo(m.materialMaster, { foreignKey: 'material_id' });
+m.materialMasterHistory.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 
 m.paymentTermMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.paymentTermMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
