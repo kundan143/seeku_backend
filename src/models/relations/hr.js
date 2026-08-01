@@ -1,6 +1,7 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../config/database-connection");
 const m = require("./masters");
+const dt = require("./developer_tools");
 const h = {};
 
 
@@ -24,6 +25,7 @@ h.attendanceRegularization = require("../attendance_regularization")(sequelize, 
 h.attendancePolicy = require("../attendance_policy")(sequelize, DataTypes);
 h.hrPolicy = require("../hr_policy")(sequelize, DataTypes);
 h.medicalInsurance = require("../medical_insurance")(sequelize, DataTypes);
+h.incentiveMaster = require("../incentive_master")(sequelize, DataTypes);
 h.socialPosts = require("../social_posts")(sequelize, DataTypes);
 h.socialPostLikes = require("../social_post_likes")(sequelize, DataTypes);
 h.socialPostComments = require("../social_post_comments")(sequelize, DataTypes);
@@ -133,6 +135,13 @@ h.medicalInsurance.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'emplo
 h.medicalInsurance.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 h.medicalInsurance.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
 h.medicalInsurance.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
+
+h.incentiveMaster.belongsTo(dt.dropdownValueMaster, { foreignKey: 'incentive_type_id' });
+h.incentiveMaster.belongsTo(m.departmentMaster, { foreignKey: 'department_id' });
+h.incentiveMaster.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'employee_id' });
+h.incentiveMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+h.incentiveMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+h.incentiveMaster.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
 
 h.socialPosts.belongsTo(m.usersMaster, { as: 'author', foreignKey: 'created_by' });
 h.socialPosts.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });

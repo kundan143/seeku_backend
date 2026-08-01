@@ -21,5 +21,6 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_hr + '/attendancePolicy', jwt, apiActivityLogger, require('../hr/attendancePolicyAPI'));
     app.use(ROOT_BASE_URL_hr + '/hrPolicy', jwt, apiActivityLogger, require('../hr/hrPolicyAPI'));
     app.use(ROOT_BASE_URL_hr + '/medicalInsurance', jwt, apiActivityLogger, require('../hr/medicalInsuranceAPI'));
+    app.use(ROOT_BASE_URL_hr + '/incentiveMaster', jwt, apiActivityLogger, require('../hr/incentiveMasterAPI'));
     app.use(ROOT_BASE_URL_hr + '/socialPosts', jwt, apiActivityLogger, require('../hr/socialPostsAPI'));
 };
