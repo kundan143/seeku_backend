@@ -1,6 +1,7 @@
 const { CronJob } = require("cron");
 const logger = require("../services/dailyLogService");
 const { updateLeaveBalanceAllocation } = require("./jobs/updateLeaveBalanceAllocation");
+const { accrueEmployeeIncentiveDetails } = require("./jobs/accrueEmployeeIncentiveDetails");
 
 // Add new cron jobs here.
 const jobs = [
@@ -8,6 +9,11 @@ const jobs = [
     name: "updateLeaveBalanceAllocation",
     cronTime: "1 0 1 * *", // 00:01 AM, 1st of every month
     onTick: updateLeaveBalanceAllocation,
+  },
+  {
+    name: "accrueEmployeeIncentiveDetails",
+    cronTime: "5 0 1 * *", // 00:05 AM, 1st of every month
+    onTick: accrueEmployeeIncentiveDetails,
   },
 ];
 

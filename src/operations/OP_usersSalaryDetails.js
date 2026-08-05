@@ -194,3 +194,30 @@ exports.getDataByUserId = async function (user_id) {
     return responseCodes.BAD_REQUEST;
   }
 };
+
+// Total net salary (monthly rows only - salary_type = 1) grouped by department or
+// designation, for the HR dashboard's "Salary by Department/Designation" widget.
+exports.getGroupedSalary = async function (groupBy) {
+  try {
+    const groupExpr = groupBy === 'designation' ? 'dm2.designation' : 'dm.name';
+    const query = `
+      SELECT COALESCE(${groupExpr}, 'Unassigned') AS label,
+             COUNT(DISTINCT usd.user_id) AS employee_count,
+             SUM(usd.net_salary) AS total_net_salary
+      FROM users_salary_details usd
+      LEFT JOIN users_master um ON um.id = usd.user_id
+      LEFT JOIN department_master dm ON dm.id = um.department_id
+      LEFT JOIN designation_master dm2 ON dm2.id = um.designation_id
+      WHERE usd.status = 1 AND usd.salary_type = 1
+      GROUP BY ${groupExpr}
+      ORDER BY total_net_salary DESC`;
+    const data = await sequelize.query(query, { type: QueryTypes.SELECT });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Grouped Salary Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};

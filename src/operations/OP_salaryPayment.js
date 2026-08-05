@@ -1,4 +1,4 @@
-const { salaryPayment, pdfTemplateMaster } = require("../models");
+const { salaryPayment, pdfTemplateMaster, salarySlipMailLog } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { QueryTypes, Op } = require("sequelize");
@@ -7,6 +7,7 @@ const path = require("path");
 const transporter = require("../services/mailTransporterService");
 const OP_usersLeave = require("./OP_usersLeave");
 const { mergeTemplate, renderHtmlToPdfFile, getLogoDataUri } = require("../services/pdfTemplateService");
+const logger = require("../services/dailyLogService");
 
 exports.addData = async function (body) {
   const t = await sequelize.transaction();
@@ -628,7 +629,12 @@ exports.generateSlip = async function (id) {
   }
 };
 
-exports.emailSlip = async function (id, toEmail) {
+exports.emailSlip = async function (id, toEmail, sentBy) {
+  const t0 = Date.now();
+  const timings = {};
+  const mark = (label, from) => { timings[label] = Date.now() - from; };
+  let claimed = false;
+  let sp, recipient, subject;
   try {
     // Fetch salary record
     const query = `
@@ -640,17 +646,19 @@ exports.emailSlip = async function (id, toEmail) {
       LEFT JOIN users_master um ON um.id = sp.user_id
       WHERE sp.id = :id AND sp.status = 1
       LIMIT 1`;
+    let tStep = Date.now();
     const rows = await sequelize.query(query, { replacements: { id }, type: QueryTypes.SELECT });
+    mark('fetchQuery', tStep);
     if (!rows.length) {
       responseCodes.NOT_FOUND.data = null;
       responseCodes.NOT_FOUND.message = "Salary payment record not found";
       return responseCodes.NOT_FOUND;
     }
-    const sp = rows[0];
+    sp = rows[0];
 
     // Resolve email — support array (multi-select) or single string, then fall back to employee record
     const resolved = Array.isArray(toEmail) ? toEmail.join(', ') : (toEmail || sp.emp_email);
-    const recipient = resolved;
+    recipient = resolved;
     console.log("Resolved recipient email:", recipient);
     if (!recipient) {
       responseCodes.BAD_REQUEST.data = null;
@@ -658,7 +666,26 @@ exports.emailSlip = async function (id, toEmail) {
       return responseCodes.BAD_REQUEST;
     }
 
+    // Atomically claim this row before sending anything. sendMail can take 8-17s (Gmail SMTP) -
+    // if we only set mail_status after sending, a second overlapping request for the same row
+    // (double-click, overlapping bulk batches) reads mail_status=0 during that whole window and
+    // sends a duplicate. The conditional WHERE makes the flip 0->1 atomic at the DB level, so
+    // only one concurrent caller can ever win it; everyone else sees claimedCount === 0 and bails.
+    tStep = Date.now();
+    const [claimedCount] = await salaryPayment.update(
+      { mail_status: 1, mail_sent_date: new Date() },
+      { where: { id, mail_status: { [Op.ne]: 1 } } }
+    );
+    mark('claim', tStep);
+    if (claimedCount === 0) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "Salary slip email has already been sent (or is currently being sent) for this record";
+      return responseCodes.BAD_REQUEST;
+    }
+    claimed = true;
+
     // Generate slip if not already done
+    tStep = Date.now();
     if (!sp.slip_url) {
       const generated = await exports.generateSlip(id);
       if (generated.code !== "100") return generated;
@@ -671,9 +698,10 @@ exports.emailSlip = async function (id, toEmail) {
       if (generated.code !== "100") return generated;
       sp.slip_url = generated.data.slip_url;
     }
+    mark('generateSlip', tStep);
 
     const monthLabel = (sp.month_name || "").trim();
-    const subject = `Salary Slip — ${monthLabel} ${sp.payment_year}`;
+    subject = `Salary Slip — ${monthLabel} ${sp.payment_year}`;
     const html = `
       <p>Dear ${sp.emp_name},</p>
       <p>Please find attached your salary slip for <strong>${monthLabel} ${sp.payment_year}</strong>.</p>
@@ -686,9 +714,11 @@ exports.emailSlip = async function (id, toEmail) {
       <p style="color:#999;font-size:11px;">This is a system-generated email. Please do not reply.</p>
     `;
 
+    tStep = Date.now();
     await transporter.sendMail({
-      from: process.env.EXP_HANDLE_USER_NAME || "no-reply@seeku.in",
-      to: recipient,
+      from: process.env.EXP_HANDLE_USER_NAME || 'Advance Cable Technologies <tech@advancecable.in>',
+      to: 'tech@advancecable.in',
+      // to: recipient,
       subject,
       html,
       attachments: [
@@ -698,39 +728,97 @@ exports.emailSlip = async function (id, toEmail) {
         },
       ],
     });
+    mark('sendMail', tStep);
 
+    tStep = Date.now();
+    await salarySlipMailLog.create({
+      salary_payment_id: id,
+      user_id: sp.user_id,
+      recipient_email: recipient,
+      subject,
+      payment_month: sp.payment_month,
+      payment_year: sp.payment_year,
+      slip_url: sp.slip_url,
+      status: 1,
+      sent_by: sentBy || null,
+      sent_date: new Date(),
+    });
+    mark('dbWrite', tStep);
+
+    logger.info({ message: `emailSlip timing for id ${id}`, totalMs: Date.now() - t0, ...timings });
     responseCodes.SUCCESS.data = { sent_to: recipient };
     responseCodes.SUCCESS.message = `Salary slip sent to ${recipient}`;
     return responseCodes.SUCCESS;
   } catch (e) {
+    // We claimed the row before sending - if the actual send failed, release the claim so
+    // this row can be retried instead of being stuck showing "sent" when it wasn't, and record
+    // the failed attempt for visibility in the mail log.
+    if (claimed) {
+      try {
+        await salaryPayment.update({ mail_status: 0, mail_sent_date: null }, { where: { id } });
+        await salarySlipMailLog.create({
+          salary_payment_id: id,
+          user_id: sp?.user_id,
+          recipient_email: recipient || '',
+          subject: subject || null,
+          payment_month: sp?.payment_month,
+          payment_year: sp?.payment_year,
+          slip_url: sp?.slip_url || null,
+          status: 0,
+          sent_by: sentBy || null,
+          sent_date: new Date(),
+        });
+      } catch (revertErr) {
+        logger.error({ message: `emailSlip: failed to release claim for id ${id}`, error: revertErr.message });
+      }
+    }
+    logger.error({ message: `emailSlip timing for id ${id} (failed)`, totalMs: Date.now() - t0, ...timings, error: e.message });
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to send salary slip email";
     return responseCodes.BAD_REQUEST;
   }
 };
 
-exports.bulkEmailSlips = async function (ids) {
+// How many slip emails to send concurrently. The SMTP transporter (Gmail) is pooled to
+// this same size (see mailTransporterService.js) - keep the two in sync so sends actually
+// overlap on the wire instead of queuing behind a smaller connection pool.
+const BULK_EMAIL_CONCURRENCY = 5;
+
+exports.bulkEmailSlips = async function (ids, sentBy) {
+  const bulkT0 = Date.now();
+  const rows = await salaryPayment.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id', 'mail_status'] });
+  const skipped = rows.filter(r => r.mail_status === 1).map(r => r.id);
+  const toSend = rows.filter(r => r.mail_status !== 1).map(r => r.id);
+
   const sent = [], failed = [];
-  for (const id of ids) {
-    try {
-      const res = await exports.emailSlip(id, null);
-      if (res.code === '100') {
-        sent.push(id);
-      } else {
-        failed.push({ id, reason: res.message });
+  let batchNum = 0;
+  for (let i = 0; i < toSend.length; i += BULK_EMAIL_CONCURRENCY) {
+    batchNum++;
+    const batchT0 = Date.now();
+    const batch = toSend.slice(i, i + BULK_EMAIL_CONCURRENCY);
+    const results = await Promise.all(batch.map(async (id) => {
+      try {
+        const res = await exports.emailSlip(id, null, sentBy);
+        return res.code === '100' ? { id, ok: true } : { id, ok: false, reason: res.message };
+      } catch (e) {
+        return { id, ok: false, reason: e.message };
       }
-    } catch (e) {
-      failed.push({ id, reason: e.message });
+    }));
+    for (const r of results) {
+      if (r.ok) sent.push(r.id);
+      else failed.push({ id: r.id, reason: r.reason });
     }
+    logger.info({ message: `bulkEmailSlips batch ${batchNum} timing`, batchSize: batch.length, batchMs: Date.now() - batchT0 });
   }
-  const data = { sent, failed };
-  if (sent.length === 0) {
+  logger.info({ message: 'bulkEmailSlips total timing', requested: ids.length, toSend: toSend.length, skipped: skipped.length, totalMs: Date.now() - bulkT0 });
+  const data = { sent, failed, skipped };
+  if (sent.length === 0 && toSend.length > 0) {
     responseCodes.BAD_REQUEST.data = data;
-    responseCodes.BAD_REQUEST.message = `Failed to send all ${ids.length} slip(s)`;
+    responseCodes.BAD_REQUEST.message = `Failed to send all ${toSend.length} slip(s)`;
     return responseCodes.BAD_REQUEST;
   }
   responseCodes.SUCCESS.data = data;
-  responseCodes.SUCCESS.message = `Sent ${sent.length} slip(s) successfully${failed.length ? `, ${failed.length} failed` : ''}`;
+  responseCodes.SUCCESS.message = `Sent ${sent.length} slip(s) successfully${failed.length ? `, ${failed.length} failed` : ''}${skipped.length ? `, ${skipped.length} already sent (skipped)` : ''}`;
   return responseCodes.SUCCESS;
 };
 

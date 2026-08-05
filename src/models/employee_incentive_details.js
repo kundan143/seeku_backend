@@ -1,5 +1,5 @@
 module.exports = function (sequelize, DataTypes) {
-  let table_name = "incentive_master";
+  let table_name = "employee_incentive_details";
   let columns = {
     id: {
       autoIncrement: true,
@@ -7,63 +7,21 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       primaryKey: true,
     },
-    incentive_name: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
-    },
-    incentive_type_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: "dropdown_value_master",
-        key: "id",
-      },
-    },
-    value_type: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-      defaultValue: "flat",
-    },
-    incentive_value: {
-      type: DataTypes.NUMERIC(12, 2),
-      allowNull: false,
-    },
-    incentive_amount: {
-      type: DataTypes.NUMERIC(12, 2),
-      allowNull: true,
-    },
-    frequency: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-      defaultValue: "yearly",
-    },
-    last_accrued_year: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    last_accrued_period: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    department_id: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      references: {
-        model: "department_master",
-        key: "id",
-      },
-    },
     employee_id: {
       type: DataTypes.INTEGER,
-      allowNull: true,
+      allowNull: false,
       references: {
         model: "users_master",
         key: "id",
       },
     },
-    description: {
-      type: DataTypes.TEXT,
-      allowNull: true,
+    year: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    amount: {
+      type: DataTypes.NUMERIC(12, 2),
+      allowNull: false,
     },
     status: {
       type: DataTypes.INTEGER,
@@ -109,7 +67,7 @@ module.exports = function (sequelize, DataTypes) {
   };
   let optional = {
     sequelize,
-    tableName: "incentive_master",
+    tableName: "employee_incentive_details",
     schema: "public",
     timestamps: false,
   };

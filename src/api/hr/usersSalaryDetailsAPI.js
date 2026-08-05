@@ -34,4 +34,9 @@ router.post('/getRowsByUser', async (req, res, next) => {
     return res.send(await OP_usersSalaryDetails.getDataByUserId(req.body.user_id));
 });
 
+// 7 = Get Salary Grouped By Department/Designation
+router.post('/getGroupedSalary', async (req, res, next) => {
+    return res.send(await OP_usersSalaryDetails.getGroupedSalary(req.body.group_by));
+});
+
 module.exports = router;
