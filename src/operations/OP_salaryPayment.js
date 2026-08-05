@@ -640,7 +640,7 @@ exports.generateSlip = async function (id) {
   }
 };
 
-exports.emailSlip = async function (id, toEmail, sentBy) {
+exports.emailSlip = async function (id, toEmail, sentBy, force) {
   const t0 = Date.now();
   const timings = {};
   const mark = (label, from) => { timings[label] = Date.now() - from; };
@@ -682,10 +682,12 @@ exports.emailSlip = async function (id, toEmail, sentBy) {
     // (double-click, overlapping bulk batches) reads mail_status=0 during that whole window and
     // sends a duplicate. The conditional WHERE makes the flip 0->1 atomic at the DB level, so
     // only one concurrent caller can ever win it; everyone else sees claimedCount === 0 and bails.
+    // `force` lets HR deliberately resend a slip that's already gone out (single-row action only -
+    // bulkEmailSlips never sets it, since it already pre-filters out mail_status===1 rows).
     tStep = Date.now();
     const [claimedCount] = await salaryPayment.update(
       { mail_status: 1, mail_sent_date: new Date() },
-      { where: { id, mail_status: { [Op.ne]: 1 } } }
+      { where: force ? { id } : { id, mail_status: { [Op.ne]: 1 } } }
     );
     mark('claim', tStep);
     if (claimedCount === 0) {
@@ -714,22 +716,72 @@ exports.emailSlip = async function (id, toEmail, sentBy) {
     const monthLabel = (sp.month_name || "").trim();
     subject = `Salary Slip — ${monthLabel} ${sp.payment_year}`;
     const html = `
-      <p>Dear ${sp.emp_name},</p>
-      <p>Please find attached your salary slip for <strong>${monthLabel} ${sp.payment_year}</strong>.</p>
-      <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">
-        <tr><td style="color:#555;">Gross Salary</td><td><strong>₹ ${parseFloat(sp.gross_salary).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></td></tr>
-        <tr><td style="color:#555;">Total Deductions</td><td><strong>₹ ${parseFloat(sp.total_deductions).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></td></tr>
-        <tr style="background:#f0f8f0;"><td style="color:#1a7a4c;font-weight:bold;">Net Salary</td><td style="color:#1a7a4c;font-weight:bold;">₹ ${parseFloat(sp.net_salary).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td></tr>
-      </table>
-      <br/>
-      <p style="color:#999;font-size:11px;">This is a system-generated email. Please do not reply.</p>
-    `;
+        <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="UTF-8">
+            </head>
+            <body style="margin:0;padding:0;background-color:#f4f6f9;font-family:Arial,Helvetica,sans-serif;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:40px 0;">
+                <tr>
+                  <td align="center">
+                    <table width="650" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e5e5;">
+                  <!-- Header -->
+                      <tr>
+                        <td align="center" style="background:#0d6efd;padding:30px;">
+                            <h2 style="margin:0;color:#ffffff;font-size:28px;">
+                                Advance Cable Technologies Ltd.
+                            </h2>
+                            <p style="margin:8px 0 0;color:#eaf2ff;font-size:16px;">
+                                Salary Slip
+                            </p>
+                        </td>
+                      </tr>
+                      <!-- Body -->
+                      <tr>
+                          <td style="padding:40px;">
+                              <p style="font-size:16px;color:#333;margin-top:0;">Dear <strong>${sp.emp_name}</strong>,</p>
+                              <p style="font-size:15px;color:#555;line-height:26px;">We hope you are doing well. </p>
+                              <p style="font-size:15px;color:#555;line-height:26px;">Please find attached your <strong>Salary Slip</strong> for the month of <strong>${monthLabel} ${sp.payment_year}</strong>.</p>
+                              <p style="font-size:15px;color:#555;line-height:26px;">Kindly keep this document for your records. If you have any questions or require any clarification regarding your salary slip, please contact the HR or Payroll Department.</p>
+                              <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                                  <tr>
+                                      <td align="center">
+                                          <div style="display:inline-block;background:#e8f4ff;border:1px solid #cfe2ff;padding:18px 25px;border-radius:8px;color:#0d6efd;font-size:15px;">
+                                              📎 <strong>Your Salary Slip PDF is attached with this email.</strong>
+                                          </div>
+                                      </td>
+                                  </tr>
+                              </table>
+                              <p style="font-size:15px;color:#555;line-height:26px;">Thank you for your continued dedication, hard work, and valuable contribution to the organization.</p>
+                              <br>
+                              <p style="margin:0;font-size:15px;color:#333;">Best Regards,</p>
+                              <p style="margin-top:8px;font-size:15px;color:#333;">
+                                  <strong>HR Department</strong><br>Advance Cable Technologies Ltd.
+                              </p>
+                          </td>
+                      </tr>
+            <!-- Footer -->
+                      <tr>
+                          <td align="center" style="background:#f8f9fa;padding:25px;font-size:12px;color:#777;line-height:20px;">
+                              This is an automatically generated email. Please do not reply to this email.<br>
+                              For any queries, please contact the HR Department.<br><br>
+
+                              © ${new Date().getFullYear()} Advance Cable Technologies Ltd. All Rights Reserved.
+                          </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </body>
+          </html>`;
 
     tStep = Date.now();
     await transporter.sendMail({
       from: process.env.EXP_HANDLE_USER_NAME || 'Advance Cable Technologies <tech@advancecable.in>',
-      to: 'tech@advancecable.in',
-      // to: recipient,
+      // to: 'tech@advancecable.in',
+      to: recipient,
       subject,
       html,
       attachments: [
