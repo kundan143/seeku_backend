@@ -52,7 +52,7 @@ exports.getAllData = async function () {
                     concat(eu.first_name, ' ', eu.last_name) as employee_name
                   from employee_incentive_details eid
                   join users_master eu on eu.id = eid.employee_id
-                  where eid.status = 1
+                  where eid.status !=0
                   order by eid.id desc;`;
     const data = await sequelize.query(query, { type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = data;

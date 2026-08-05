@@ -233,10 +233,16 @@ function clampRatio(paidDays, workingDays) {
 const EARNING_KEYS = ['basic_salary','dearness_allowance','city_allowance','hra','conveyance','medical_allowance','travel_allowance','special_allowance','bonus'];
 // Prorates each earning line by ratio and sums the already-rounded lines for gross_salary,
 // so an itemized earnings table always adds up exactly to the printed Gross Salary.
-function prorateEarnings(master, ratio) {
+// When bonusOverride is given (an incentive was disbursed this month), it replaces the
+// master's configured bonus entirely and is paid in full, unprorated by attendance.
+function prorateEarnings(master, ratio, bonusOverride) {
   const fields = {};
   let gross = 0;
-  EARNING_KEYS.forEach(k => { const v = round2(Number(master[k]) * ratio); fields[k] = v; gross += v; });
+  EARNING_KEYS.forEach(k => {
+    const v = (k === 'bonus' && bonusOverride != null) ? round2(Number(bonusOverride)) : round2(Number(master[k]) * ratio);
+    fields[k] = v;
+    gross += v;
+  });
   return { fields, gross_salary: round2(gross) };
 }
 
@@ -257,7 +263,7 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
           WHEN sp.id IS NOT NULL THEN TRUE
           ELSE FALSE
         END AS already_processed,
-        sp.id AS existing_payment_id
+        sp.id AS existing_payment_id, eid.amount AS incentive_amount
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
       LEFT JOIN department_master dm ON dm.id = um.department_id
@@ -265,6 +271,7 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       LEFT JOIN salary_payments sp ON sp.salary_detail_id = usd.id
       AND sp.payment_month = :payment_month AND sp.payment_year = :payment_year
       AND sp.status = 1
+      LEFT JOIN employee_incentive_details eid ON eid.employee_id = um.id and eid.disbursed_month_id = :payment_month and eid.status = 1
       WHERE usd.status = 1 AND um.status = TRUE
       ORDER BY dm.name, emp_name`;
     const [employees, monthInfo] = await Promise.all([
@@ -281,7 +288,7 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       const leave = emp.user_id ? leaveMap[emp.user_id] : null;
       const att = computeAttendance(monthInfo.working_days, leave, 0);
       const ratio = clampRatio(att.paid_days, monthInfo.working_days);
-      const { fields, gross_salary } = prorateEarnings(emp, ratio);
+      const { fields, gross_salary } = prorateEarnings(emp, ratio, emp.incentive_amount);
       // Active, unsettled loan/advance requests add their monthly installment on
       // top of whatever's manually entered in Employee Salary Master.
       const total_deductions = (Number(emp.total_deductions) || 0) + (Number(emp.monthly_deduction_amount) || 0);
@@ -366,9 +373,13 @@ exports.processBulkPayroll = async function (body) {
                     SELECT SUM(lar.monthly_deduction_amount)
                     FROM loan_advance_request lar
                     WHERE lar.employee_id = usd.user_id AND lar.status = 1 AND (lar.amount - lar.total_paid) > 0
-                  ), 0) AS monthly_deduction_amount
-           FROM users_salary_details usd WHERE usd.id IN (:ids)`,
-          { replacements: { ids: salaryDetailIds }, type: QueryTypes.SELECT, transaction: t }
+                  ), 0) AS monthly_deduction_amount,
+                  eid.amount AS incentive_amount
+           FROM users_salary_details usd
+           LEFT JOIN employee_incentive_details eid ON eid.employee_id = usd.user_id
+             AND eid.disbursed_month_id = :payment_month AND eid.status = 1
+           WHERE usd.id IN (:ids)`,
+          { replacements: { ids: salaryDetailIds, payment_month }, type: QueryTypes.SELECT, transaction: t }
         )
       : [];
     const masterMap = {};
@@ -384,7 +395,7 @@ exports.processBulkPayroll = async function (body) {
 
       let earningFields, deductionFields, gross_salary, total_deductions, net_salary;
       if (master) {
-        const prorated = prorateEarnings(master, ratio);
+        const prorated = prorateEarnings(master, ratio, master.incentive_amount);
         earningFields = prorated.fields;
         gross_salary  = prorated.gross_salary;
         // Active, unsettled loan/advance requests add their monthly installment on

@@ -28,6 +28,10 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       defaultValue: 1,
     },
+    disbursed_month_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     created_by: {
       type: DataTypes.INTEGER,
       allowNull: false,
