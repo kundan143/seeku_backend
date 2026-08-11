@@ -17,6 +17,7 @@ dc.innerSheathingInformation = require("../inner_sheathing_information")(sequeli
 dc.outerSheathingInformation = require("../outer_sheathing_information")(sequelize, DataTypes);
 dc.laidUpInformation = require("../laid_up_information")(sequelize, DataTypes);
 dc.productionDatasheetStages = require("../production_datasheet_stages")(sequelize, DataTypes);
+dc.cableSpecDocument = require("../cable_spec_document")(sequelize, DataTypes);
 
 // RELATIONSHIPS
 
@@ -97,5 +98,9 @@ dc.productionDatasheetStages.belongsTo(m.cableStageMaster, { foreignKey: "stage_
 dc.productionDatasheetStages.belongsTo(m.usersMaster, { foreignKey: "created_by" });
 dc.productionDatasheetStages.belongsTo(m.usersMaster, { foreignKey: "modified_by" });
 dc.productionDatasheetStages.belongsTo(m.usersMaster, { foreignKey: "deleted_by" });
+
+dc.cableSpecDocument.belongsTo(m.usersMaster, { foreignKey: "created_by" });
+dc.cableSpecDocument.belongsTo(m.usersMaster, { foreignKey: "modified_by" });
+dc.cableSpecDocument.belongsTo(m.usersMaster, { foreignKey: "deleted_by" });
 
 module.exports = dc;
