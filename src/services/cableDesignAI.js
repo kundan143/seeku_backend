@@ -228,15 +228,30 @@ exports.generateDesign = async function (rfq) {
   return parseJsonResponse(textBlock.text);
 };
 
-// ─── Quick Conductor & Insulation design ───────────────────────────────────
+// ─── Cable Design (quick construction generator) ───────────────────────────
 // A small, focused tool distinct from the full generateDesign() flow above:
-// 4 basic inputs in, a flat set of conductor+insulation construction values
-// out (no confidence/reason wrapper - these are meant to populate editable
-// input boxes directly). Schema is small enough to use strict structured
-// output (unlike the ~89-field full design schema, which hits Anthropic's
-// grammar-size limit - see OUTPUT_FORMAT_INSTRUCTIONS above).
+// a handful of basic inputs (cable type, size, cores, materials) in, a flat
+// set of construction values out (no confidence/reason wrapper - these are
+// meant to populate editable input boxes directly).
+//
+// Different cable types need different construction fields (a Single Core
+// cable has no armour; a CAT 6 SFTP cable has shielding + braiding +
+// electrical parameters that nothing else has). Rather than one giant schema
+// covering every field for every type - which would hit Anthropic's
+// structured-output grammar-size limit exactly like the full generateDesign()
+// schema did (see OUTPUT_FORMAT_INSTRUCTIONS above) - construction fields are
+// grouped into MODULES, and each cable type is defined as the ordered list of
+// modules it needs. Only the selected type's modules go into any one request,
+// so every request's schema stays small regardless of how many cable types
+// this tool supports in total.
+
 const CONDUCTOR_TYPE_OPTIONS = ["Aluminium", "Bare Copper", "Tinned Copper"];
 const CONDUCTOR_CLASS_OPTIONS = ["Class 1 (Solid)", "Class 2 (Semi Flex)", "Class 5 (Flexible)", "Class 6 (Super Flex)"];
+const ARMOUR_MATERIAL_OPTIONS = [
+  "Galvanized Steel (GI) Wire", "Galvanized Steel (GI) Strip", "Aluminium Wire",
+  "Aluminium Strip", "Stainless Steel Wire", "Double Tape Armour",
+];
+const DRAIN_WIRE_MATERIAL_OPTIONS = ["ABC (Annealed Bare Copper)", "ATC (Annealed Tinned Copper)"];
 
 // Business rule: Aluminium conductors are always Class 2 (Semi Flex); Bare/Tinned Copper
 // are always Class 5 (Flexible). Enforced by narrowing the schema's enum to that single
@@ -247,34 +262,147 @@ const FORCED_CONDUCTOR_CLASS_BY_MATERIAL = {
   "Tinned Copper": "Class 5 (Flexible)",
 };
 
-function quickDesignOutputSchema(includeOuterSheath, forcedClass) {
-  const numericField = (description) => ({ type: "string", description: `${description} Numeric value only, no units (e.g. "7.41" not "7.41 ohm/km").` });
-  const properties = {
-    conductorType: { type: "string", enum: CONDUCTOR_TYPE_OPTIONS, description: "Conductor material type." },
-    class: {
-      type: "string",
-      enum: forcedClass ? [forcedClass] : CONDUCTOR_CLASS_OPTIONS,
-      description: "Conductor construction class.",
-    },
-    noOfStrands: numericField("Number of strands in the conductor."),
-    diaOfStrands: numericField("Diameter of each strand, in mm."),
-    maxConductorResistance: numericField("Maximum DC resistance of the conductor at 20°C, in ohm/km."),
-    insulationMaterial: { type: "string", description: "Insulation compound grade, e.g. 'PVC Type A' or 'XLPE'." },
-    thickness: numericField("Nominal insulation thickness, in mm."),
-    diaOfInsulation: numericField("Overall diameter over insulation, in mm."),
-    colour: { type: "string", description: "Insulation colour." },
-    tensileBeforeAgeing: numericField("Tensile strength before ageing, in N/mm2."),
-    tensileAfterAgeing: numericField("Tensile strength after ageing, in N/mm2."),
-    elongationBeforeAgeing: numericField("Elongation at break before ageing, in %."),
-    elongationAfterAgeing: numericField("Elongation at break after ageing, in %."),
-    sparkTest: numericField("Spark test voltage, in kV."),
-  };
-  if (includeOuterSheath) {
-    // outerSheathMaterial is a user-provided input for multi-core cables (like conductor/
-    // insulation material), not generated here - only its resulting construction values are.
-    properties.outerSheathThickness = numericField("Nominal outer sheath thickness, in mm, for the given outer sheath material.");
-    properties.outerSheathColour = { type: "string", description: "Outer sheath colour." };
-    properties.outerSheathOverallDiameter = numericField("Overall diameter of the finished multi-core cable over the outer sheath, in mm.");
+const numericField = (description) => ({ type: "string", description: `${description} Numeric value only, no units (e.g. "7.41" not "7.41 ohm/km").` });
+const textField = (description) => ({ type: "string", description });
+const enumField = (options, description) => ({ type: "string", enum: options, description });
+
+// Every construction field this tool can generate, across every cable type. Field keys
+// are unique across the whole flat output (no nesting), so sheath-layer variants get a
+// prefix (outerSheath.../innerSheath...) to avoid colliding with the base insulation names.
+const FIELD_DEFS = {
+  class: () => enumField(CONDUCTOR_CLASS_OPTIONS, "Conductor construction class."),
+  noOfStrands: () => numericField("Number of strands in the conductor."),
+  diaOfStrands: () => numericField("Diameter of each strand, in mm."),
+  maxConductorResistance: () => numericField("Maximum DC resistance of the conductor at 20°C, in ohm/km."),
+  coreDiameter: () => numericField("Overall diameter of the finished conductor core, in mm."),
+  conductorType: () => enumField(CONDUCTOR_TYPE_OPTIONS, "Conductor material type."),
+  starSeparator: () => textField("Star separator construction used to keep the twisted pairs in position, e.g. 'Nylon star separator'."),
+
+  insulationMaterial: () => textField("Insulation compound grade, e.g. 'PVC Type A' or 'XLPE'."),
+  thickness: () => numericField("Nominal insulation thickness, in mm."),
+  diaOfInsulation: () => numericField("Overall diameter over insulation, in mm."),
+  colour: () => textField("Insulation colour."),
+  tensileBeforeAgeing: () => numericField("Insulation tensile strength before ageing, in N/mm2."),
+  tensileAfterAgeing: () => numericField("Insulation tensile strength after ageing, in N/mm2."),
+  elongationBeforeAgeing: () => numericField("Insulation elongation at break before ageing, in %."),
+  elongationAfterAgeing: () => numericField("Insulation elongation at break after ageing, in %."),
+  sparkTest: () => numericField("Spark test voltage applied to the insulation, in kV."),
+
+  laidUpDiameter: () => numericField("Overall diameter of the cable core after laying up all cores together, in mm."),
+
+  innerSheathThickness: () => numericField("Nominal inner sheath (bedding) thickness, for the given inner sheath material, in mm."),
+  innerSheathColour: () => textField("Inner sheath colour."),
+  innerSheathTensileBeforeAgeing: () => numericField("Inner sheath tensile strength before ageing, in N/mm2."),
+  innerSheathTensileAfterAgeing: () => numericField("Inner sheath tensile strength after ageing, in N/mm2."),
+  innerSheathElongationBeforeAgeing: () => numericField("Inner sheath elongation at break before ageing, in %."),
+  innerSheathElongationAfterAgeing: () => numericField("Inner sheath elongation at break after ageing, in %."),
+  innerSheathOverallDiameter: () => numericField("Overall diameter over the inner sheath, in mm."),
+
+  outerSheathThickness: () => numericField("Nominal outer sheath thickness, for the given outer sheath material, in mm."),
+  outerSheathColour: () => textField("Outer sheath colour."),
+  outerSheathTensileBeforeAgeing: () => numericField("Outer sheath tensile strength before ageing, in N/mm2."),
+  outerSheathTensileAfterAgeing: () => numericField("Outer sheath tensile strength after ageing, in N/mm2."),
+  outerSheathElongationBeforeAgeing: () => numericField("Outer sheath elongation at break before ageing, in %."),
+  outerSheathElongationAfterAgeing: () => numericField("Outer sheath elongation at break after ageing, in %."),
+  outerSheathOverallDiameter: () => numericField("Overall (finished cable) diameter over the outer sheath, in mm."),
+
+  armourSize: () => numericField("Armour wire/strip size, in mm."),
+  armourMaterial: () => enumField(ARMOUR_MATERIAL_OPTIONS, "Armour construction material."),
+  diameterOverArmour: () => numericField("Overall diameter over the armour layer, in mm."),
+
+  mica1Size: () => numericField("Fire barrier Mica tape (layer 1) size, in mm."),
+  mica2Size: () => numericField("Fire barrier Mica tape (layer 2) size, in mm."),
+
+  indShieldPolyesterTapeThickness: () => numericField("Individual shielding polyester tape thickness, in mm."),
+  indShieldPolyesterTapeOverlap: () => numericField("Individual shielding polyester tape overlap, in %."),
+  indShieldPolyesterTapeCoverage: () => numericField("Individual shielding polyester tape coverage, in %."),
+  indShieldAlMylarTapeThickness: () => numericField("Individual shielding Al-Mylar tape thickness, in mm."),
+  indShieldAlMylarTapeOverlap: () => numericField("Individual shielding Al-Mylar tape overlap, in %."),
+  indShieldAlMylarTapeCoverage: () => numericField("Individual shielding Al-Mylar tape coverage, in %."),
+  indShieldDrainWireSize: () => numericField("Individual shielding drain wire size, in mm."),
+  indShieldDrainWireMaterial: () => enumField(DRAIN_WIRE_MATERIAL_OPTIONS, "Individual shielding drain wire material."),
+
+  ovShieldPolyesterTapeThickness: () => numericField("Overall shielding polyester tape thickness, in mm."),
+  ovShieldPolyesterTapeOverlap: () => numericField("Overall shielding polyester tape overlap, in %."),
+  ovShieldPolyesterTapeCoverage: () => numericField("Overall shielding polyester tape coverage, in %."),
+  ovShieldAlMylarTapeThickness: () => numericField("Overall shielding Al-Mylar tape thickness, in mm."),
+  ovShieldAlMylarTapeOverlap: () => numericField("Overall shielding Al-Mylar tape overlap, in %."),
+  ovShieldAlMylarTapeCoverage: () => numericField("Overall shielding Al-Mylar tape coverage, in %."),
+  ovShieldDrainWireSize: () => numericField("Overall shielding drain wire size, in mm."),
+  ovShieldDrainWireMaterial: () => enumField(DRAIN_WIRE_MATERIAL_OPTIONS, "Overall shielding drain wire material."),
+
+  braidingSize: () => numericField("Braiding wire size, in mm."),
+  braidingMaterial: () => enumField(DRAIN_WIRE_MATERIAL_OPTIONS, "Braiding wire material."),
+  braidingCoverage: () => numericField("Braiding coverage, in %."),
+
+  resistanceUnbalance: () => numericField("Maximum resistance unbalance between conductors, in %."),
+  mutualCapacitance: () => numericField("Maximum mutual capacitance, in nF/100m."),
+  highVoltageTest: () => textField("High voltage test specification and result, e.g. '1000V for 1 min - Pass'."),
+  impedance: () => numericField("Characteristic impedance at 1 MHz, in ohms."),
+  minBendingRadius: () => textField("Minimum bending radius, e.g. '8x overall diameter'."),
+};
+
+// Module -> ordered field keys. Modules are the unit cable types are composed from.
+const MODULES = {
+  conductor: ["class", "noOfStrands", "diaOfStrands", "maxConductorResistance", "coreDiameter", "conductorType"],
+  starSeparator: ["starSeparator"],
+  insulation: ["insulationMaterial", "thickness", "colour", "tensileBeforeAgeing", "tensileAfterAgeing", "elongationBeforeAgeing", "elongationAfterAgeing", "diaOfInsulation"],
+  sparkTest: ["sparkTest"],
+  laidUp: ["laidUpDiameter"],
+  innerSheath: ["innerSheathThickness", "innerSheathColour", "innerSheathTensileBeforeAgeing", "innerSheathTensileAfterAgeing", "innerSheathElongationBeforeAgeing", "innerSheathElongationAfterAgeing", "innerSheathOverallDiameter"],
+  outerSheath: ["outerSheathThickness", "outerSheathColour", "outerSheathTensileBeforeAgeing", "outerSheathTensileAfterAgeing", "outerSheathElongationBeforeAgeing", "outerSheathElongationAfterAgeing", "outerSheathOverallDiameter"],
+  // CAT UTP/FTP outer sheaths are reported without ageing tests in the spec - a subset of
+  // the same field keys as `outerSheath`, so no separate field definitions are needed.
+  catOuterSheath: ["outerSheathThickness", "outerSheathColour", "outerSheathOverallDiameter"],
+  armour: ["armourSize", "armourMaterial", "diameterOverArmour"],
+  fireBarrierTape: ["mica1Size", "mica2Size"],
+  individualShielding: ["indShieldPolyesterTapeThickness", "indShieldPolyesterTapeOverlap", "indShieldPolyesterTapeCoverage", "indShieldAlMylarTapeThickness", "indShieldAlMylarTapeOverlap", "indShieldAlMylarTapeCoverage", "indShieldDrainWireSize", "indShieldDrainWireMaterial"],
+  overallShielding: ["ovShieldPolyesterTapeThickness", "ovShieldPolyesterTapeOverlap", "ovShieldPolyesterTapeCoverage", "ovShieldAlMylarTapeThickness", "ovShieldAlMylarTapeOverlap", "ovShieldAlMylarTapeCoverage", "ovShieldDrainWireSize", "ovShieldDrainWireMaterial"],
+  braiding: ["braidingSize", "braidingMaterial", "braidingCoverage"],
+  electricalParameters: ["resistanceUnbalance", "mutualCapacitance", "highVoltageTest", "impedance", "minBendingRadius"],
+};
+
+// Cable type -> ordered modules. Every "Armoured*" type gets innerSheath + armour +
+// outerSheath (armour always needs a bedding underneath and a protective sheath over it,
+// even on the few Fire Survival/Shielding variants whose source spec table didn't spell
+// that out explicitly); every "Unarmoured*" type gets outerSheath only, no armour.
+const CABLE_TYPE_MODULES = {
+  "Single Core": ["conductor", "insulation", "sparkTest"],
+  "Multicore": ["conductor", "insulation", "laidUp", "outerSheath"],
+  "Unarmoured": ["conductor", "insulation", "laidUp", "innerSheath", "outerSheath"],
+  "Armoured": ["conductor", "insulation", "laidUp", "innerSheath", "armour", "outerSheath"],
+  "Unarmoured Fire Survival": ["conductor", "fireBarrierTape", "insulation", "laidUp", "outerSheath"],
+  "Armoured Fire Survival": ["conductor", "fireBarrierTape", "insulation", "laidUp", "innerSheath", "armour", "outerSheath"],
+  "Unarmoured Fire Survival (Individual Shielding)": ["conductor", "insulation", "individualShielding", "laidUp", "outerSheath"],
+  "Armoured Fire Survival (Individual Shielding)": ["conductor", "insulation", "individualShielding", "laidUp", "innerSheath", "armour", "outerSheath"],
+  "Unarmoured Fire Survival (Individual and Overall Shielding)": ["conductor", "insulation", "individualShielding", "overallShielding", "laidUp", "outerSheath"],
+  "Armoured Fire Survival (Individual and Overall Shielding)": ["conductor", "insulation", "individualShielding", "overallShielding", "laidUp", "innerSheath", "armour", "outerSheath"],
+  "Unarmoured Fire Survival (Overall Shielding)": ["conductor", "insulation", "overallShielding", "laidUp", "outerSheath"],
+  "Armoured Fire Survival (Overall Shielding)": ["conductor", "insulation", "overallShielding", "laidUp", "innerSheath", "armour", "outerSheath"],
+  "Instrumentation": ["conductor", "insulation", "overallShielding", "laidUp", "outerSheath"],
+  "CAT 6 UTP": ["conductor", "starSeparator", "insulation", "laidUp", "catOuterSheath", "electricalParameters"],
+  "CAT 6 FTP": ["conductor", "starSeparator", "insulation", "individualShielding", "laidUp", "catOuterSheath", "electricalParameters"],
+  "CAT 6 SFTP": ["conductor", "insulation", "individualShielding", "braiding", "laidUp", "outerSheath", "electricalParameters"],
+};
+
+function modulesForCableType(cableType) {
+  const modules = CABLE_TYPE_MODULES[cableType];
+  if (!modules) {
+    throw new Error(`Unknown cable type: "${cableType}"`);
+  }
+  return modules;
+}
+
+function quickDesignOutputSchema(modules, forcedClass) {
+  const properties = {};
+  for (const moduleKey of modules) {
+    for (const fieldKey of MODULES[moduleKey]) {
+      if (properties[fieldKey]) continue; // e.g. catOuterSheath re-using outerSheath keys
+      properties[fieldKey] = FIELD_DEFS[fieldKey]();
+    }
+  }
+  if (forcedClass && properties.class) {
+    properties.class = { ...properties.class, enum: [forcedClass] };
   }
   return {
     type: "object",
@@ -286,52 +414,61 @@ function quickDesignOutputSchema(includeOuterSheath, forcedClass) {
 
 const QUICK_DESIGN_SYSTEM_PROMPT = `You are an expert Cable Design Engineer with more than 30 years of experience in LV, MV, HV, Instrumentation, Control, Solar, Automotive, Flexible, and Building cables.
 
-Given a basic cable specification, generate the conductor and insulation construction parameters defined in the output schema.
+Given a basic cable specification, generate the construction parameters defined in the output schema for the specified cable type.
 
 Rules:
-- Use IEC/IS/ASTM/BS standards and common industrial practice appropriate to the given conductor size, core count, and materials.
-- If multiple values are possible, choose the most commonly used industrial value for that conductor size.
+- Use IEC/IS/ASTM/BS standards and common industrial practice appropriate to the given cable type, conductor size, core count, and materials.
+- If multiple values are possible, choose the most commonly used industrial value for that conductor size and cable type.
 - Never leave any field blank - always provide a concrete value.
 - Numeric fields must be plain numbers with no units in the string (e.g. "7.41", not "7.41 ohm/km" or "~7.4").
 - Material prices are NEVER generated by you.`;
 
-function buildQuickDesignUserPrompt(input, includeOuterSheath, forcedClass) {
+// Module -> the given (user-provided) input, if any, that a field in this module reads
+// from - used so the prompt makes clear which material a set of construction values is for.
+const MODULE_INPUT_MATERIAL_FIELD = {
+  outerSheath: "outerSheathMaterial",
+  catOuterSheath: "outerSheathMaterial",
+  innerSheath: "innerSheathMaterial",
+};
+
+function buildQuickDesignUserPrompt(input, modules, forcedClass) {
   const lines = [
+    `Cable Type: ${input.cableType}`,
     `Conductor Size: ${input.conductorSize} sq.mm`,
     `Number of Cores: ${input.noOfCores}`,
     `Conductor Material: ${input.conductorMaterial}`,
     `Insulation Material: ${input.insulationMaterial}`,
   ];
-  if (includeOuterSheath) {
-    lines.push(`Outer Sheath Material: ${input.outerSheathMaterial}`);
+  for (const [moduleKey, inputField] of Object.entries(MODULE_INPUT_MATERIAL_FIELD)) {
+    if (modules.includes(moduleKey) && input[inputField]) {
+      const label = moduleKey.startsWith("outer") || moduleKey === "catOuterSheath" ? "Outer Sheath Material" : "Inner Sheath Material";
+      lines.push(`${label}: ${input[inputField]}`);
+    }
   }
   if (forcedClass) {
     lines.push(`Conductor Class: Must be exactly "${forcedClass}" for ${input.conductorMaterial} conductor material - generate the strand count and strand diameter consistent with this class.`);
   }
-  lines.push("", "Generate the conductor and insulation construction parameters defined in the output schema.");
-  if (includeOuterSheath) {
-    lines.push("This is a multi-core cable - also generate the outer sheath (laid up over all cores) thickness, colour, and overall diameter for the given outer sheath material.");
-  }
+  lines.push("", `Generate the construction parameters for a "${input.cableType}" cable, per the JSON structure defined in your instructions.`);
   return lines.join("\n");
 }
 
 exports.generateConductorInsulationDesign = async function (input) {
-  const includeOuterSheath = Number(input.noOfCores) > 1;
+  const modules = modulesForCableType(input.cableType);
   const forcedClass = FORCED_CONDUCTOR_CLASS_BY_MATERIAL[input.conductorMaterial];
 
   const stream = client.messages.stream({
     model: "claude-opus-5",
-    max_tokens: 8000,
+    max_tokens: 16000,
     thinking: { type: "adaptive" },
     system: QUICK_DESIGN_SYSTEM_PROMPT,
     output_config: {
       format: {
         type: "json_schema",
-        schema: quickDesignOutputSchema(includeOuterSheath, forcedClass),
+        schema: quickDesignOutputSchema(modules, forcedClass),
       },
     },
     messages: [
-      { role: "user", content: buildQuickDesignUserPrompt(input, includeOuterSheath, forcedClass) },
+      { role: "user", content: buildQuickDesignUserPrompt(input, modules, forcedClass) },
     ],
   });
 
@@ -348,3 +485,6 @@ exports.generateConductorInsulationDesign = async function (input) {
 
   return JSON.parse(textBlock.text);
 };
+
+exports.CABLE_TYPE_MODULES = CABLE_TYPE_MODULES;
+exports.MODULES = MODULES;
