@@ -36,4 +36,9 @@ router.post('/getFieldDetails', async (req, res, next) => {
     return res.send(await OP_DropdownValueMaster.getFieldDetails(req.body.field_id));
 });
 
+// 8 = Get every field's values for a menu, grouped by field_name
+router.post('/getValuesByMenu', async (req, res, next) => {
+    return res.send(await OP_DropdownValueMaster.getValuesByMenu(req.body.menu_id));
+});
+
 module.exports = router;

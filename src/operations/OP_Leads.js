@@ -61,7 +61,6 @@ exports.addData = async function (body) {
     responseCodes.SUCCESS.message = "Lead Added Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.error("Error adding lead:", e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Lead";
     return responseCodes.BAD_REQUEST;

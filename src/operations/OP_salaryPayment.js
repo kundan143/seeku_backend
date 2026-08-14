@@ -632,7 +632,6 @@ exports.generateSlip = async function (id) {
     responseCodes.SUCCESS.message = "Salary slip generated successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e)
     await t.rollback();
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to generate salary slip";
@@ -670,7 +669,6 @@ exports.emailSlip = async function (id, toEmail, sentBy, force) {
     // Resolve email — support array (multi-select) or single string, then fall back to employee record
     const resolved = Array.isArray(toEmail) ? toEmail.join(', ') : (toEmail || sp.emp_email);
     recipient = resolved;
-    console.log("Resolved recipient email:", recipient);
     if (!recipient) {
       responseCodes.BAD_REQUEST.data = null;
       responseCodes.BAD_REQUEST.message = "No email address found for this employee";
@@ -927,7 +925,7 @@ exports.getDataPaymentCompleted = async function (user_id) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e)
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Distinct Months & Years";
     return responseCodes.BAD_REQUEST;

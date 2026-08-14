@@ -8,7 +8,6 @@ const { systemConfig } = require("../models");
 async function sendAccountLockedMail(user, attempts) {
   const officeEmail = process.env.OFFICE_NOTIFICATION_EMAIL;
   if (!officeEmail) return;
-  console.log(`Sending account lockout notification for ${user.work_email || user.emp_code} to ${officeEmail}`);
   const displayName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.work_email || user.emp_code || "Unknown User";
 
   const mailOptions = {

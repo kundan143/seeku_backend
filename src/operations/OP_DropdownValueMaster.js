@@ -107,6 +107,29 @@ exports.getFieldDetails = async function (field_id) {
 	}
 };
 
+exports.getValuesByMenu = async function (menu_id) {
+	try {
+		let query = `SELECT dm.field_name, dvm.field_value
+						FROM dropdown_master dm
+						LEFT JOIN dropdown_value_master dvm ON dvm.field_id = dm.id AND dvm.is_deleted = 0 AND dvm.status = 1
+						WHERE dm.menu_id = :menu_id AND dm.is_deleted = 0
+						ORDER BY dm.field_name ASC, dvm.id ASC`;
+		var rows = await sequelize.query(query, { replacements: { menu_id }, type: QueryTypes.SELECT });
+		var grouped = {};
+		for (const row of rows) {
+			if (!grouped[row.field_name]) grouped[row.field_name] = [];
+			if (row.field_value !== null) grouped[row.field_name].push(row.field_value);
+		}
+		responseCodes.SUCCESS.data = grouped;
+		responseCodes.SUCCESS.message = "";
+		return responseCodes.SUCCESS;
+	} catch (e) {
+		responseCodes.BAD_REQUEST.data = e;
+		responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+		return responseCodes.BAD_REQUEST;
+	}
+};
+
 exports.getFieldValues = async function (field_id) {
 	try {
 		let query = `SELECT dvm.*, dvm.id::int as id, dm.field_name, mm.menu_name, mm.id as menu_id
