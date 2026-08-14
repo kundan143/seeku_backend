@@ -10,7 +10,6 @@ exports.addData = async function (body) {
     responseCodes.SUCCESS.message = "Quotation Added Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.error("Error adding quotation:", e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Quotation";
     return responseCodes.BAD_REQUEST;

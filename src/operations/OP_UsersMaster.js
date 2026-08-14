@@ -383,7 +383,6 @@ exports.updatePassword = async function (body) {
 
 exports.deleteData = async function (body) {
   try {
-    console.log(body,"kundan")
     if (!body?.id) {
       return { ...responseCodes.BAD_REQUEST, message: "Missing id" };
     }
@@ -432,7 +431,6 @@ exports.getAllData = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "error");
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -636,7 +634,6 @@ exports.getCompanyHierarchy = async function () {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e, "error");
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;

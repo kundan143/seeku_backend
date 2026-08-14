@@ -86,7 +86,6 @@ async function createContactBundle(body) {
     responseCodes.SUCCESS.message = "Contact Saved Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
     await t.rollback();
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Save Contact";

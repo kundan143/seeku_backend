@@ -74,7 +74,6 @@ routers.post("/user_login", async (req, res) => {
           let parents_arr = result.filter((o) => o.parent_id == null);
           let menu_details = recursion(parents_arr, result);
           let all_menu = menu_details;
-          console.log("all_menu", all_menu);
           var get_links = await getlink(roleId, userId);
           var all_links = JSON.stringify(get_links);
           var finalData = {
@@ -102,13 +101,11 @@ routers.post("/user_login", async (req, res) => {
 
           // Lock account if attempts >= 3
           if (attempts >= 3) {
-            console.log(`Locking account for ${email} after ${attempts} failed attempts.`);
             updateData.account_block = true;
             logger.warn(`Account locked for user: ${email} after 3 failed attempts.`);
             await usersMaster.update(updateData, { where: { id: user.id } });
 
             try {
-              console.log(`Attempting to send account-locked notification for ${user.work_email || user.emp_code}`);
               await sendAccountLockedMail(user, attempts);
             } catch (e) {
               logger.error(`Failed to send account-locked notification: ${e.message}`);
