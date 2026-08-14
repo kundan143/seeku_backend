@@ -34,4 +34,9 @@ router.post('/getOneRow', async (req, res, next) => {
     return res.send(await OP_CableDesign.getOneData(req.body.id));
 });
 
+// 7 = Generate PDF for a Saved Design (via PDF Template Master)
+router.post('/generatePdf', async (req, res, next) => {
+    return res.send(await OP_CableDesign.generatePdf(req.body.id));
+});
+
 module.exports = router;

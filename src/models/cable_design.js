@@ -7,10 +7,6 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: false,
             primaryKey: true
         },
-        design_name: {
-            type: DataTypes.STRING(255),
-            allowNull: false
-        },
         cable_type: {
             type: DataTypes.STRING(100),
             allowNull: false
@@ -73,6 +69,14 @@ module.exports = function (sequelize, DataTypes) {
         },
         deleted_date: {
             type: DataTypes.DATE,
+            allowNull: true
+        },
+        pdf_url: {
+            type: DataTypes.STRING(500),
+            allowNull: true
+        },
+        pdf_template_id: {
+            type: DataTypes.INTEGER,
             allowNull: true
         },
     };

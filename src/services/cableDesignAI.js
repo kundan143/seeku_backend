@@ -1,6 +1,7 @@
 const fs = require("fs");
 const Anthropic = require("@anthropic-ai/sdk");
 const OP_CableSpecDocument = require("../operations/OP_CableSpecDocument");
+const OP_DropdownValueMaster = require("../operations/OP_DropdownValueMaster");
 
 const client = new Anthropic();
 
@@ -245,17 +246,40 @@ exports.generateDesign = async function (rfq) {
 // so every request's schema stays small regardless of how many cable types
 // this tool supports in total.
 
-const CONDUCTOR_TYPE_OPTIONS = ["Aluminium", "Bare Copper", "Tinned Copper"];
-const CONDUCTOR_CLASS_OPTIONS = ["Class 1 (Solid)", "Class 2 (Semi Flex)", "Class 5 (Flexible)", "Class 6 (Super Flex)"];
-const ARMOUR_MATERIAL_OPTIONS = [
-  "Galvanized Steel (GI) Wire", "Galvanized Steel (GI) Strip", "Aluminium Wire",
-  "Aluminium Strip", "Stainless Steel Wire", "Double Tape Armour",
-];
-const DRAIN_WIRE_MATERIAL_OPTIONS = ["ABC (Annealed Bare Copper)", "ATC (Annealed Tinned Copper)"];
+// These four enum lists are admin-editable master data (dropdown_master/dropdown_value_master,
+// menu_id CABLE_DESIGN_MENU_ID - see 89_cable_design_dynamic_dropdowns.sql), not fixed constants.
+// No hardcoded values here - refreshDynamicOptions() overwrites each array in place (same
+// array reference, so every enumField() closure over them stays valid) at the start of every
+// generation request.
+const CONDUCTOR_TYPE_OPTIONS = [];
+const CONDUCTOR_CLASS_OPTIONS = [];
+const ARMOUR_MATERIAL_OPTIONS = [];
+const DRAIN_WIRE_MATERIAL_OPTIONS = [];
+
+const CABLE_DESIGN_MENU_ID = 100;
+
+// Master field_name -> the local array it feeds, kept in sync with the seed migration.
+const DYNAMIC_OPTION_FIELDS = {
+  "Conductor Material": CONDUCTOR_TYPE_OPTIONS,
+  "Conductor Class": CONDUCTOR_CLASS_OPTIONS,
+  "Armour Material": ARMOUR_MATERIAL_OPTIONS,
+  "Drain Wire Material": DRAIN_WIRE_MATERIAL_OPTIONS,
+};
+
+async function refreshDynamicOptions() {
+  const res = await OP_DropdownValueMaster.getValuesByMenu(CABLE_DESIGN_MENU_ID);
+  const grouped = res && res.data ? res.data : {};
+  for (const [fieldName, targetArray] of Object.entries(DYNAMIC_OPTION_FIELDS)) {
+    targetArray.length = 0;
+    targetArray.push(...(grouped[fieldName] || []));
+  }
+}
 
 // Business rule: Aluminium conductors are always Class 2 (Semi Flex); Bare/Tinned Copper
 // are always Class 5 (Flexible). Enforced by narrowing the schema's enum to that single
 // value (a hard guarantee, not just a prompt instruction) so the model can't pick another.
+// Keyed by the "Conductor Material" master's field_value strings - renaming a value there
+// without updating this map means that material simply won't force a class anymore.
 const FORCED_CONDUCTOR_CLASS_BY_MATERIAL = {
   "Aluminium": "Class 2 (Semi Flex)",
   "Bare Copper": "Class 5 (Flexible)",
@@ -453,6 +477,7 @@ function buildQuickDesignUserPrompt(input, modules, forcedClass) {
 }
 
 exports.generateConductorInsulationDesign = async function (input) {
+  await refreshDynamicOptions();
   const modules = modulesForCableType(input.cableType);
   const forcedClass = FORCED_CONDUCTOR_CLASS_BY_MATERIAL[input.conductorMaterial];
 
