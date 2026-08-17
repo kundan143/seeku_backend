@@ -173,7 +173,8 @@ async function getMonthWorkingDays(payment_month, payment_year) {
   const year  = parseInt(payment_year,  10);
   const month = parseInt(payment_month, 10);
 
-  const daysInMonth = new Date(year, month, 0).getDate();
+  // const daysInMonth = new Date(year, month, 0).getDate();
+  const daysInMonth = 30;
 
   // Collect all Sunday dates in the month
   const sundaySet = new Set();
@@ -205,7 +206,7 @@ async function getMonthWorkingDays(payment_month, payment_year) {
     total_days:      daysInMonth,
     sundays:         sundaySet.size,
     public_holidays: nonSundayHolidays.length,
-    working_days:    daysInMonth - sundaySet.size - nonSundayHolidays.length,
+    working_days:    daysInMonth - nonSundayHolidays.length,
     holiday_list:    holidays,
     start_date:      startDate,
     end_date:        endDate,
@@ -227,6 +228,34 @@ function computeAttendance(workingDays, leave, manualUnapprovedLeaveDays) {
 }
 
 function round2(n) { return Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100; }
+
+// Injects a visible "Arrears Included" note into the rendered slip HTML whenever this payment
+// carries a positive arrears_amount - done here rather than via a mergeTemplate placeholder so
+// it shows up regardless of whether the active PDF template was ever updated to reference one.
+function appendArrearsNote(html, sp, fmt, monthLabel) {
+  const arrears = Number(sp.arrears_amount) || 0;
+  if (arrears <= 0) return html;
+
+  const monthsLine = sp.arrear_months
+    ? ` covering ${sp.arrear_months} month(s) of back pay from a salary increment`
+    : " from a salary increment";
+  const note = `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;">
+      <tr>
+        <td style="padding:12px 16px;background:#fff7e6;border:1px solid #f0c36d;border-radius:6px;
+                    font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#7a4a00;">
+          <strong>Arrears Included:</strong> This ${monthLabel} ${sp.payment_year} payment includes a
+          one-time arrears amount of <strong>${fmt(arrears)}</strong>${monthsLine}, added on top of the
+          regular Net Salary.
+        </td>
+      </tr>
+    </table>`;
+
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, note + "</body>");
+  }
+  return html + note;
+}
 function clampRatio(paidDays, workingDays) {
   return workingDays > 0 ? Math.max(0, Math.min(1, paidDays / workingDays)) : 1;
 }
@@ -263,7 +292,24 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
           WHEN sp.id IS NOT NULL THEN TRUE
           ELSE FALSE
         END AS already_processed,
-        sp.id AS existing_payment_id, eid.amount AS incentive_amount
+        sp.id AS existing_payment_id, eid.amount AS incentive_amount,
+        -- Aggregated (not a plain JOIN) so an employee with more than one increment scheduled
+        -- into this same disbursement month still returns exactly one row here, combining every
+        -- pending increment's arrears into a single total instead of duplicating the employee.
+        COALESCE((
+          SELECT SUM(sih.total_arrear_amount)
+          FROM salary_increment_history sih
+          WHERE sih.user_id = um.id AND sih.disbursement_month = :payment_month
+            AND sih.disbursement_year = :payment_year AND sih.status = 1
+            AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
+        ), 0) AS arrears_amount,
+        (
+          SELECT COALESCE(array_agg(sih.id), ARRAY[]::bigint[])
+          FROM salary_increment_history sih
+          WHERE sih.user_id = um.id AND sih.disbursement_month = :payment_month
+            AND sih.disbursement_year = :payment_year AND sih.status = 1
+            AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
+        ) AS increment_ids
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
       LEFT JOIN department_master dm ON dm.id = um.department_id
@@ -292,12 +338,17 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       // Active, unsettled loan/advance requests add their monthly installment on
       // top of whatever's manually entered in Employee Salary Master.
       const total_deductions = (Number(emp.total_deductions) || 0) + (Number(emp.monthly_deduction_amount) || 0);
+      // A scheduled increment arrears lump sum (salary_increment_history.total_arrear_amount)
+      // is paid in full, unprorated, on top of net salary - not part of gross_salary since
+      // it's its own labeled payslip line rather than a recurring earning.
+      const arrears_amount = round2(emp.arrears_amount);
       return {
         ...emp,
         ...fields,
         gross_salary,
         total_deductions,
-        net_salary:             round2(gross_salary - total_deductions),
+        arrears_amount,
+        net_salary:             round2(gross_salary - total_deductions + arrears_amount),
         master:                 { ...emp },
         working_days:          monthInfo.working_days,
         present_days:          att.present_days,
@@ -374,17 +425,35 @@ exports.processBulkPayroll = async function (body) {
                     FROM loan_advance_request lar
                     WHERE lar.employee_id = usd.user_id AND lar.status = 1 AND (lar.amount - lar.total_paid) > 0
                   ), 0) AS monthly_deduction_amount,
-                  eid.amount AS incentive_amount
+                  eid.amount AS incentive_amount,
+                  -- Aggregated (not a plain JOIN) so an employee with more than one increment
+                  -- scheduled into this same disbursement month is still one row here, combining
+                  -- every pending increment's arrears instead of duplicating this master row.
+                  COALESCE((
+                    SELECT SUM(sih.total_arrear_amount)
+                    FROM salary_increment_history sih
+                    WHERE sih.user_id = usd.user_id AND sih.disbursement_month = :payment_month
+                      AND sih.disbursement_year = :payment_year AND sih.status = 1
+                      AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
+                  ), 0) AS arrears_amount,
+                  (
+                    SELECT COALESCE(array_agg(sih.id), ARRAY[]::bigint[])
+                    FROM salary_increment_history sih
+                    WHERE sih.user_id = usd.user_id AND sih.disbursement_month = :payment_month
+                      AND sih.disbursement_year = :payment_year AND sih.status = 1
+                      AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
+                  ) AS increment_ids
            FROM users_salary_details usd
            LEFT JOIN employee_incentive_details eid ON eid.employee_id = usd.user_id
              AND eid.disbursed_month_id = :payment_month AND eid.status = 1
            WHERE usd.id IN (:ids)`,
-          { replacements: { ids: salaryDetailIds, payment_month }, type: QueryTypes.SELECT, transaction: t }
+          { replacements: { ids: salaryDetailIds, payment_month, payment_year }, type: QueryTypes.SELECT, transaction: t }
         )
       : [];
     const masterMap = {};
     masterRows.forEach(m => { masterMap[m.id] = m; });
 
+    const allConsumedIncrementIds = [];
     const records = employees.map(emp => {
       const master = masterMap[emp.salary_detail_id];
 
@@ -394,6 +463,7 @@ exports.processBulkPayroll = async function (body) {
       const ratio = clampRatio(paidDays, calculatedWorkingDays);
 
       let earningFields, deductionFields, gross_salary, total_deductions, net_salary;
+      let arrears_amount = 0, increment_id = null, rowIncrementIds = [];
       if (master) {
         const prorated = prorateEarnings(master, ratio, master.incentive_amount);
         earningFields = prorated.fields;
@@ -402,7 +472,17 @@ exports.processBulkPayroll = async function (body) {
         // top of whatever's manually entered in Employee Salary Master.
         const activeLoanDeduction = Number(master.monthly_deduction_amount) || 0;
         total_deductions = (Number(master.total_deductions) || 0) + activeLoanDeduction;
-        net_salary    = round2(gross_salary - total_deductions);
+        // A scheduled increment arrears lump sum is paid in full, unprorated, on top of
+        // net salary - its own labeled payslip line, not part of gross_salary. There can be
+        // more than one increment pending for the same disbursement month (see arrears_amount's
+        // SUM above) - salary_payments.increment_id is a single FK, so it's only populated
+        // when there's exactly one contributing increment; every id still gets its
+        // arrear_paid_status flipped below regardless of how many there are.
+        arrears_amount = round2(master.arrears_amount);
+        rowIncrementIds = Array.isArray(master.increment_ids) ? master.increment_ids.filter(Boolean) : [];
+        increment_id   = rowIncrementIds.length === 1 ? rowIncrementIds[0] : null;
+        allConsumedIncrementIds.push(...rowIncrementIds);
+        net_salary    = round2(gross_salary - total_deductions + arrears_amount);
         deductionFields = {
           pf_employee:              Number(master.pf_employee)              || 0,
           professional_tax:         Number(master.professional_tax)         || 0,
@@ -445,6 +525,8 @@ exports.processBulkPayroll = async function (body) {
         gross_salary,
         total_deductions,
         net_salary,
+        arrears_amount,
+        increment_id,
         working_days:             calculatedWorkingDays,
         present_days:             presentDays,
         paid_days:                paidDays,
@@ -457,6 +539,18 @@ exports.processBulkPayroll = async function (body) {
     });
 
     await salaryPayment.bulkCreate(records, { transaction: t });
+
+    // Arrears just paid out in this run must never be picked up by a future run. Built from
+    // every contributing increment id per row (allConsumedIncrementIds), not just each record's
+    // single increment_id FK - a row can have more than one increment pending for the same
+    // disbursement month, and every one of them still needs to be marked paid here.
+    if (allConsumedIncrementIds.length) {
+      await sequelize.query(
+        `UPDATE salary_increment_history SET arrear_paid_status = 1 WHERE id IN (:ids)`,
+        { replacements: { ids: allConsumedIncrementIds }, transaction: t }
+      );
+    }
+
     await t.commit();
 
     responseCodes.SUCCESS.data = { processed: records.length };
@@ -496,11 +590,13 @@ exports.generateSlip = async function (id) {
              rolm.state        AS regd_office_state,
              rolm.pincode      AS regd_office_pincode,
              rolm.phone        AS regd_office_phone,
-             rolm.email        AS regd_office_email
+             rolm.email        AS regd_office_email,
+             sih.arrear_months AS arrear_months
       FROM salary_payments sp
       LEFT JOIN users_master           um    ON um.id    = sp.user_id
       LEFT JOIN department_master      dm    ON dm.id    = um.department_id
       LEFT JOIN designation_master     dm2   ON dm2.id   = um.designation_id
+      LEFT JOIN salary_increment_history sih ON sih.id   = sp.increment_id
       LEFT JOIN client_branding_master cbm   ON cbm.id   = 1
       LEFT JOIN office_location_master olm   ON olm.id   = 1
       LEFT JOIN city_master            city  ON city.id  = olm.city_id
@@ -616,13 +712,19 @@ exports.generateSlip = async function (id) {
       other_deduction_fmt: fmt(sp.other_deduction),
       gross_salary_fmt: fmt(sp.gross_salary),
       total_deductions_fmt: fmt(sp.total_deductions),
+      arrears_amount_fmt: fmt(sp.arrears_amount),
       net_salary_fmt: fmt(sp.net_salary),
       regd_office_line: regdOfficeLine,
       regd_contact_line: regdContactLine,
       remarks_line: sp.remarks ? `Remarks: ${sp.remarks}` : "",
     };
 
-    const mergedHtml = mergeTemplate(template.html_content, mergeData);
+    let mergedHtml = mergeTemplate(template.html_content, mergeData);
+    // Arrears only show up if the active template happens to reference {{arrears_amount_fmt}} -
+    // templates are user-authored HTML with no such placeholder baked in today, so this note is
+    // injected directly into the rendered markup instead, guaranteeing it's visible on every
+    // template whenever a payment actually carries arrears (arrears_amount > 0).
+    mergedHtml = appendArrearsNote(mergedHtml, sp, fmt, monthLabel);
     await renderHtmlToPdfFile(mergedHtml, filePath);
 
     await salaryPayment.update({ slip_url: slipUrl, pdf_template_id: template.id }, { where: { id }, transaction: t });

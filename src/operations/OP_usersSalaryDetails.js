@@ -1,7 +1,7 @@
-const { usersSalaryDetails } = require("../models");
+const { usersSalaryDetails, salaryIncrementHistory } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
-const { QueryTypes } = require("sequelize");
+const { QueryTypes, Op } = require("sequelize");
 
 // Fields whose value depends on salary_type (Monthly x 12 <-> Yearly / 12)
 const AMOUNT_FIELDS = [
@@ -91,6 +91,165 @@ exports.updateData = async function (body) {
   }
 };
 
+// Applies an increment given from Employee Salary Master's "Give Increment" action: snapshots
+// the row's full current field set into salary_increment_history (append-only, so it survives
+// the in-place overwrite below), then saves body.data's salary fields as the new current row -
+// same trust model as updateData (the frontend already computed the new values), just with an
+// archived-before-write step. increment_type/value/disbursement_month/disbursement_year/remarks
+// describe the change and are stored on the history row only, never written to
+// users_salary_details itself.
+exports.applyIncrement = async function (body) {
+  const t = await sequelize.transaction();
+  try {
+    const primary = await usersSalaryDetails.findByPk(body.id, { transaction: t });
+    if (!primary) {
+      await t.rollback();
+      responseCodes.NOT_FOUND.data = null;
+      responseCodes.NOT_FOUND.message = "Salary record not found";
+      return responseCodes.NOT_FOUND;
+    }
+    const oldPlain = primary.get({ plain: true });
+    const oldSnapshot = {};
+    AMOUNT_FIELDS.forEach((f) => { oldSnapshot[f] = oldPlain[f]; });
+
+    const data = body.data || {};
+    const {
+      increment_type, increment_value, disbursement_month, disbursement_year,
+      arrear_months, total_arrear_amount, remarks, modified_by, modified_date,
+      ...salaryFields
+    } = data;
+
+    await usersSalaryDetails.update(salaryFields, { where: { id: body.id }, transaction: t });
+
+    const updated = await usersSalaryDetails.findByPk(body.id, { transaction: t });
+    const updatedPlain = updated.get({ plain: true });
+    if (updatedPlain.pair_id) {
+      await usersSalaryDetails.update(
+        buildCounterpart(updatedPlain),
+        { where: { id: updatedPlain.pair_id }, transaction: t }
+      );
+    }
+
+    const newSnapshot = {};
+    AMOUNT_FIELDS.forEach((f) => { newSnapshot[f] = updatedPlain[f]; });
+
+    await salaryIncrementHistory.create(
+      {
+        user_id: oldPlain.user_id,
+        salary_detail_id: body.id,
+        increment_type,
+        increment_value,
+        effective_from: salaryFields.effective_from ?? oldPlain.effective_from,
+        disbursement_month,
+        disbursement_year,
+        arrear_months: arrear_months || 0,
+        total_arrear_amount: total_arrear_amount || 0,
+        old_salary_snapshot: oldSnapshot,
+        new_salary_snapshot: newSnapshot,
+        remarks: remarks || null,
+        status: 1,
+        created_by: modified_by,
+        created_date: modified_date,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+    responseCodes.SUCCESS.data = null;
+    responseCodes.SUCCESS.message = "Increment Applied Successfully";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    await t.rollback();
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Apply Increment";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+// Rolls users_salary_details (and its Monthly<->Yearly pair) back to a history row's
+// old_salary_snapshot - undoing exactly what applyIncrement saved as the new current salary.
+// Refuses to revert a row that isn't the LATEST non-reverted increment on that salary_detail_id,
+// since reverting to an older snapshot while a later increment sits on top of it would silently
+// discard that later increment's change; the history row itself stays (marked is_reverted)
+// rather than being deleted, so the audit trail still shows the increment happened.
+exports.revertIncrement = async function (body) {
+  const t = await sequelize.transaction();
+  try {
+    const history = await salaryIncrementHistory.findByPk(body.id, { transaction: t });
+    if (!history) {
+      await t.rollback();
+      responseCodes.NOT_FOUND.data = null;
+      responseCodes.NOT_FOUND.message = "Increment history record not found";
+      return responseCodes.NOT_FOUND;
+    }
+    const historyPlain = history.get({ plain: true });
+
+    if (historyPlain.is_reverted) {
+      await t.rollback();
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "This increment has already been reverted";
+      return responseCodes.BAD_REQUEST;
+    }
+
+    const newer = await salaryIncrementHistory.findOne({
+      where: {
+        salary_detail_id: historyPlain.salary_detail_id,
+        status: 1,
+        is_reverted: false,
+        id: { [Op.gt]: historyPlain.id },
+      },
+      transaction: t,
+    });
+    if (newer) {
+      await t.rollback();
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "A newer increment exists on top of this one - revert that first.";
+      return responseCodes.BAD_REQUEST;
+    }
+
+    const primary = await usersSalaryDetails.findByPk(historyPlain.salary_detail_id, { transaction: t });
+    if (!primary) {
+      await t.rollback();
+      responseCodes.NOT_FOUND.data = null;
+      responseCodes.NOT_FOUND.message = "Salary record not found";
+      return responseCodes.NOT_FOUND;
+    }
+
+    const restoreFields = {};
+    AMOUNT_FIELDS.forEach((f) => { restoreFields[f] = historyPlain.old_salary_snapshot[f]; });
+
+    await usersSalaryDetails.update(restoreFields, { where: { id: primary.id }, transaction: t });
+
+    const updated = await usersSalaryDetails.findByPk(primary.id, { transaction: t });
+    const updatedPlain = updated.get({ plain: true });
+    if (updatedPlain.pair_id) {
+      await usersSalaryDetails.update(
+        buildCounterpart(updatedPlain),
+        { where: { id: updatedPlain.pair_id }, transaction: t }
+      );
+    }
+
+    await salaryIncrementHistory.update(
+      {
+        is_reverted: true,
+        reverted_by: body.reverted_by,
+        reverted_date: body.reverted_date,
+      },
+      { where: { id: historyPlain.id }, transaction: t }
+    );
+
+    await t.commit();
+    responseCodes.SUCCESS.data = null;
+    responseCodes.SUCCESS.message = "Increment Reverted Successfully";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    await t.rollback();
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Revert Increment";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 exports.deleteData = async function (body) {
   const t = await sequelize.transaction();
   try {
@@ -121,7 +280,8 @@ exports.getAllData = async function (body) {
   try {
     const query = `
       SELECT usd.*,
-             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+             um.dob
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
       WHERE usd.status = 1
@@ -142,7 +302,7 @@ exports.getOneData = async function (id) {
     const query = `
       SELECT usd.*,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
-             um.mobile, um.email, um.doj,
+             um.mobile, um.email, um.doj, um.dob,
              dm.name  AS department_name,
              dm2.designation AS designation_name
       FROM users_salary_details usd
@@ -175,7 +335,8 @@ exports.getDataByUserId = async function (user_id) {
   try {
     const query = `
       SELECT usd.*,
-             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+             um.dob
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
       WHERE usd.user_id = :user_id AND usd.status = 1

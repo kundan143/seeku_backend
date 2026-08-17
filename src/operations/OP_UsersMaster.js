@@ -681,9 +681,9 @@ exports.getEmpNameBankNotAdded = async function () {
 exports.getEmpNameSalMasterNotAdded = async function () {
   try {
     let query = {};
-    query = `SELECT um.id, concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS name
+    query = `SELECT um.id, concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS name, um.dob
               FROM users_master AS um
-              LEFT JOIN users_salary_details usd on um.id = usd.user_id 
+              LEFT JOIN users_salary_details usd on um.id = usd.user_id
               WHERE um.status = true AND usd.user_id IS NULL
               ORDER BY um.id DESC;`;
     const data = await sequelize.query(query, {

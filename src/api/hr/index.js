@@ -23,6 +23,7 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_hr + '/hrPolicy', jwt, apiActivityLogger, require('../hr/hrPolicyAPI'));
     app.use(ROOT_BASE_URL_hr + '/medicalInsurance', jwt, apiActivityLogger, require('../hr/medicalInsuranceAPI'));
     app.use(ROOT_BASE_URL_hr + '/incentiveMaster', jwt, apiActivityLogger, require('../hr/incentiveMasterAPI'));
+    app.use(ROOT_BASE_URL_hr + '/salaryIncrementHistory', jwt, apiActivityLogger, require('../hr/salaryIncrementHistoryAPI'));
     app.use(ROOT_BASE_URL_hr + '/employeeIncentiveDetails', jwt, apiActivityLogger, require('../hr/employeeIncentiveDetailsAPI'));
     app.use(ROOT_BASE_URL_hr + '/socialPosts', jwt, apiActivityLogger, require('../hr/socialPostsAPI'));
 };

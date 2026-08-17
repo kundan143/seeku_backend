@@ -28,6 +28,7 @@ h.attendancePolicy = require("../attendance_policy")(sequelize, DataTypes);
 h.hrPolicy = require("../hr_policy")(sequelize, DataTypes);
 h.medicalInsurance = require("../medical_insurance")(sequelize, DataTypes);
 h.incentiveMaster = require("../incentive_master")(sequelize, DataTypes);
+h.salaryIncrementHistory = require("../salary_increment_history")(sequelize, DataTypes);
 h.socialPosts = require("../social_posts")(sequelize, DataTypes);
 h.socialPostLikes = require("../social_post_likes")(sequelize, DataTypes);
 h.socialPostComments = require("../social_post_comments")(sequelize, DataTypes);
@@ -48,11 +49,18 @@ h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
 
+h.salaryIncrementHistory.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
+h.salaryIncrementHistory.belongsTo(h.usersSalaryDetails, { foreignKey: 'salary_detail_id' });
+h.salaryIncrementHistory.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
+h.salaryIncrementHistory.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
+h.salaryIncrementHistory.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
+
 h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
 h.salaryPayment.belongsTo(h.usersSalaryDetails, { foreignKey: 'salary_detail_id' });
 h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
 h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
 h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
+h.salaryPayment.belongsTo(h.salaryIncrementHistory, { foreignKey: 'increment_id' });
 
 h.salarySlipMailLog.belongsTo(h.salaryPayment, { foreignKey: 'salary_payment_id' });
 h.salarySlipMailLog.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'user_id' });
