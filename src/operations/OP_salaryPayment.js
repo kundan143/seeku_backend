@@ -471,7 +471,12 @@ exports.processBulkPayroll = async function (body) {
         // Active, unsettled loan/advance requests add their monthly installment on
         // top of whatever's manually entered in Employee Salary Master.
         const activeLoanDeduction = Number(master.monthly_deduction_amount) || 0;
-        total_deductions = (Number(master.total_deductions) || 0) + activeLoanDeduction;
+        // Income Tax (TDS) is editable per row in the bulk preview for this run only - swap the
+        // master's baked-in income_tax for whatever the client sent, same math as the frontend's
+        // computeRowTotalDeductions, so the two never disagree.
+        const baseIncomeTax = Number(master.income_tax) || 0;
+        const incomeTaxOverride = emp.income_tax != null ? (Number(emp.income_tax) || 0) : baseIncomeTax;
+        total_deductions = (Number(master.total_deductions) || 0) - baseIncomeTax + incomeTaxOverride + activeLoanDeduction;
         // A scheduled increment arrears lump sum is paid in full, unprorated, on top of
         // net salary - its own labeled payslip line, not part of gross_salary. There can be
         // more than one increment pending for the same disbursement month (see arrears_amount's
@@ -486,7 +491,7 @@ exports.processBulkPayroll = async function (body) {
         deductionFields = {
           pf_employee:              Number(master.pf_employee)              || 0,
           professional_tax:         Number(master.professional_tax)         || 0,
-          income_tax:               Number(master.income_tax)               || 0,
+          income_tax:               incomeTaxOverride,
           employee_state_insurance: Number(master.employee_state_insurance) || 0,
           loan_deduction:           (Number(master.loan_deduction) || 0) + activeLoanDeduction,
           other_deduction:          Number(master.other_deduction)          || 0,
