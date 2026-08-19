@@ -230,6 +230,11 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true,
             references: { model: 'salary_increment_history', key: 'id' }
         },
+        lwf_amount: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: false,
+            defaultValue: 0.00
+        },
     };
     let optional = {
         sequelize,

@@ -92,11 +92,13 @@ exports.getAllData = async function () {
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              dm.name  AS department_name, um.email,
              dm2.designation AS designation_name,
+             lm.name AS location_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
       FROM salary_payments sp
       LEFT JOIN users_master      um   ON um.id   = sp.user_id
       LEFT JOIN department_master dm   ON dm.id   = um.department_id
       LEFT JOIN designation_master dm2 ON dm2.id  = um.designation_id
+      LEFT JOIN office_location_master lm ON lm.id = um.location_id
       WHERE sp.status = 1
       ORDER BY sp.payment_year DESC, sp.payment_month DESC, sp.id DESC`;
     const data = await sequelize.query(query, { type: QueryTypes.SELECT });
@@ -373,6 +375,41 @@ function insertArrearsBeforeRegdFooter(html, sp, fmt, monthLabel) {
   }
   return html + note;
 }
+
+// PDF templates are user-authored plain HTML merged by simple {{tag}} substitution
+// (mergeTemplate below) - any `*ngIf="x > 0"` attribute on a row is decorative only and never
+// actually hides anything at render time. For merge tags that should genuinely disappear when
+// there's nothing to show (LWF outside December, for one), the enclosing row is stripped from
+// the raw template here, before merging, whenever the given value isn't greater than 0. Assumes
+// the tag sits in a single flat row with no nested <div> between the row's opening tag and its
+// closing </div> - true for every deduction/earning row in the default template.
+function stripRowIfZero(html, mergeTag, value) {
+  if (Number(value) > 0) return html;
+  // The (?!<\/div>) guards stop the lazy [\s\S] from crossing an earlier sibling row's closing
+  // tag, which would otherwise swallow that whole preceding row too - the div-open this starts
+  // from must be the nearest one before the merge tag with no </div> in between.
+  const rowPattern = new RegExp(
+    `<div\\b[^>]*>(?:(?!<\\/div>)[\\s\\S])*?\\{\\{\\s*${mergeTag}\\s*\\}\\}(?:(?!<\\/div>)[\\s\\S])*?<\\/div>`,
+    "i"
+  );
+  return html.replace(rowPattern, "");
+}
+
+// Rows to drop from the slip entirely when their underlying salary_payments column is 0 -
+// field is the raw sp.* column (used for the >0 check), tag is the {{...}}_fmt merge tag whose
+// row gets removed.
+const ZERO_HIDE_MERGE_TAGS = [
+  { field: "city_allowance",           tag: "city_allowance_fmt" },
+  { field: "conveyance",               tag: "conveyance_fmt" },
+  { field: "pf_employee",              tag: "pf_employee_fmt" },
+  { field: "professional_tax",         tag: "professional_tax_fmt" },
+  { field: "income_tax",               tag: "income_tax_fmt" },
+  { field: "employee_state_insurance", tag: "employee_state_insurance_fmt" },
+  { field: "loan_deduction",           tag: "loan_deduction_fmt" },
+  { field: "other_deduction",          tag: "other_deduction_fmt" },
+  { field: "lwf_amount",               tag: "lwf_amount_fmt" },
+];
+
 function clampRatio(paidDays, workingDays) {
   return workingDays > 0 ? Math.max(0, Math.min(1, paidDays / workingDays)) : 1;
 }
@@ -634,6 +671,11 @@ exports.processBulkPayroll = async function (body) {
 
       let earningFields, deductionFields, gross_salary, total_deductions, net_salary;
       let arrears_amount = 0, increment_id = null, rowIncrementIds = [];
+      // Labour Welfare Fund - entered manually by HR in the bulk preview (commonly only for the
+      // December run, but not restricted here since state-wise LWF cycles vary); trusted as-is
+      // from the client the same way income_tax already is, since there's no master value to
+      // recompute it against.
+      const lwfAmount = round2(emp.lwf_amount);
       if (master) {
         const prorated = prorateEarnings(master, ratio, master.incentive_amount);
         earningFields = prorated.fields;
@@ -656,7 +698,7 @@ exports.processBulkPayroll = async function (body) {
         const baseESI = Number(master.employee_state_insurance) || 0;
         const esiOverride = computeEmployeeESI(standardGross);
         total_deductions = (Number(master.total_deductions) || 0) - baseIncomeTax + incomeTaxOverride
-          - basePT + ptOverride - baseESI + esiOverride + activeLoanDeduction;
+          - basePT + ptOverride - baseESI + esiOverride + activeLoanDeduction + lwfAmount;
         // A scheduled increment arrears lump sum is paid in full, unprorated, on top of
         // net salary - its own labeled payslip line, not part of gross_salary. There can be
         // more than one increment pending for the same disbursement month (see arrears_amount's
@@ -712,6 +754,7 @@ exports.processBulkPayroll = async function (body) {
         net_salary,
         arrears_amount,
         increment_id,
+        lwf_amount:               lwfAmount,
         working_days:             calculatedWorkingDays,
         present_days:             presentDays,
         paid_days:                paidDays,
@@ -899,6 +942,7 @@ exports.generateSlip = async function (id) {
       employee_state_insurance_fmt: fmt(sp.employee_state_insurance),
       loan_deduction_fmt: fmt(sp.loan_deduction),
       other_deduction_fmt: fmt(sp.other_deduction),
+      lwf_amount_fmt: fmt(sp.lwf_amount),
       gross_salary_fmt: fmt(sp.gross_salary),
       total_deductions_fmt: fmt(sp.total_deductions),
       arrears_amount_fmt: fmt(sp.arrears_amount),
@@ -915,7 +959,14 @@ exports.generateSlip = async function (id) {
     // inserted right before the {{regd_office_line}}/{{regd_contact_line}} footer tags - wherever
     // the template places the Regd. Office address/phone/email - so arrears always read above
     // that footer instead of trailing after it at the very end of the document.
-    const htmlWithArrears = insertArrearsBeforeRegdFooter(template.html_content, sp, fmt, monthLabel);
+    let htmlWithArrears = insertArrearsBeforeRegdFooter(template.html_content, sp, fmt, monthLabel);
+    // These rows are dropped entirely (not just printed as "Rs. 0.00") whenever nothing was
+    // actually earned/deducted this payment - LWF only applies to the December run, and the rest
+    // commonly land at 0 for plenty of employees (e.g. no active loan, PT/ESI waived by age or
+    // gross, no City Allowance/Conveyance configured).
+    ZERO_HIDE_MERGE_TAGS.forEach(({ tag, field }) => {
+      htmlWithArrears = stripRowIfZero(htmlWithArrears, tag, sp[field]);
+    });
     const mergedHtml = mergeTemplate(htmlWithArrears, mergeData);
     await renderHtmlToPdfFile(mergedHtml, filePath);
 
