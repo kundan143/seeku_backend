@@ -275,10 +275,41 @@ function prorateEarnings(master, ratio, bonusOverride) {
   return { fields, gross_salary: round2(gross) };
 }
 
+function calculateAge(dob) {
+  if (!dob) return null;
+  const dobDate = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - dobDate.getFullYear();
+  const monthDiff = today.getMonth() - dobDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dobDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+// Professional Tax: Rs. 200/month, waived (0) when the standard monthly gross is under
+// Rs. 25,000 OR the employee is over 60 - recomputed fresh at payroll time rather than trusted
+// from whatever's stored on Employee Salary Master, since age crosses the 60 threshold silently
+// over time without that record ever being re-saved.
+function computeProfessionalTax(standardMonthlyGross, dob) {
+  if ((Number(standardMonthlyGross) || 0) < 25000) return 0;
+  const age = calculateAge(dob);
+  if (age != null && age > 60) return 0;
+  return 200;
+}
+
+// ESI (Employee): 0.75% of the standard monthly gross when it's under Rs. 21,000, else 0 -
+// same "recompute fresh, never trust the stored value" treatment as computeProfessionalTax.
+function computeEmployeeESI(standardMonthlyGross) {
+  const gross = Number(standardMonthlyGross) || 0;
+  return gross < 21000 ? round2(gross * 0.0075) : 0;
+}
+
 exports.previewBulkPayroll = async function (payment_month, payment_year) {
   try {
     const query = `
       SELECT usd.id AS salary_detail_id, usd.user_id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+      um.dob,
       dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance,
       usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.pf_employee,
       usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.other_deduction, usd.pf_employer, usd.net_salary,
@@ -331,6 +362,26 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       : {};
 
     const employeesWithAttendance = employees.map(emp => {
+      // Recompute Professional Tax fresh (gross threshold + age>60 waiver) against the
+      // standard, unprorated monthly gross - corrected in place before anything downstream
+      // (including the `master` snapshot below) reads total_deductions/professional_tax, so
+      // every consumer of this row - preview totals, the frontend's own recalculation on
+      // attendance/income-tax edits, and processBulkPayroll - inherits the corrected baseline.
+      const basePT = Number(emp.professional_tax) || 0;
+      const ptOverride = computeProfessionalTax(emp.gross_salary, emp.dob);
+      if (ptOverride !== basePT) {
+        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - basePT + ptOverride);
+        emp.professional_tax = ptOverride;
+      }
+      // Same fresh-recompute treatment for ESI (Employee) - 0.75% of standard gross under
+      // Rs. 21,000, else 0.
+      const baseESI = Number(emp.employee_state_insurance) || 0;
+      const esiOverride = computeEmployeeESI(emp.gross_salary);
+      if (esiOverride !== baseESI) {
+        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - baseESI + esiOverride);
+        emp.employee_state_insurance = esiOverride;
+      }
+
       const leave = emp.user_id ? leaveMap[emp.user_id] : null;
       const att = computeAttendance(monthInfo.working_days, leave, 0);
       const ratio = clampRatio(att.paid_days, monthInfo.working_days);
@@ -420,6 +471,7 @@ exports.processBulkPayroll = async function (body) {
                   usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.total_deductions,
                   usd.pf_employee, usd.professional_tax, usd.income_tax, usd.employee_state_insurance,
                   usd.loan_deduction, usd.other_deduction, usd.pf_employer, usd.esi_employer, usd.gratuity,
+                  um.dob,
                   COALESCE((
                     SELECT SUM(lar.monthly_deduction_amount)
                     FROM loan_advance_request lar
@@ -444,6 +496,7 @@ exports.processBulkPayroll = async function (body) {
                       AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
                   ) AS increment_ids
            FROM users_salary_details usd
+           LEFT JOIN users_master um ON um.id = usd.user_id
            LEFT JOIN employee_incentive_details eid ON eid.employee_id = usd.user_id
              AND eid.disbursed_month_id = :payment_month AND eid.status = 1
            WHERE usd.id IN (:ids)`,
@@ -476,7 +529,17 @@ exports.processBulkPayroll = async function (body) {
         // computeRowTotalDeductions, so the two never disagree.
         const baseIncomeTax = Number(master.income_tax) || 0;
         const incomeTaxOverride = emp.income_tax != null ? (Number(emp.income_tax) || 0) : baseIncomeTax;
-        total_deductions = (Number(master.total_deductions) || 0) - baseIncomeTax + incomeTaxOverride + activeLoanDeduction;
+        // Professional Tax is never trusted from Employee Salary Master either - recomputed
+        // fresh against the standard (unprorated) monthly gross + current age, since age
+        // crosses the 60 waiver threshold silently over time without that record being re-saved.
+        const standardGross = EARNING_KEYS.reduce((sum, k) => sum + (Number(master[k]) || 0), 0);
+        const basePT = Number(master.professional_tax) || 0;
+        const ptOverride = computeProfessionalTax(standardGross, master.dob);
+        // Same fresh-recompute treatment for ESI (Employee).
+        const baseESI = Number(master.employee_state_insurance) || 0;
+        const esiOverride = computeEmployeeESI(standardGross);
+        total_deductions = (Number(master.total_deductions) || 0) - baseIncomeTax + incomeTaxOverride
+          - basePT + ptOverride - baseESI + esiOverride + activeLoanDeduction;
         // A scheduled increment arrears lump sum is paid in full, unprorated, on top of
         // net salary - its own labeled payslip line, not part of gross_salary. There can be
         // more than one increment pending for the same disbursement month (see arrears_amount's
@@ -490,9 +553,9 @@ exports.processBulkPayroll = async function (body) {
         net_salary    = round2(gross_salary - total_deductions + arrears_amount);
         deductionFields = {
           pf_employee:              Number(master.pf_employee)              || 0,
-          professional_tax:         Number(master.professional_tax)         || 0,
+          professional_tax:         ptOverride,
           income_tax:               incomeTaxOverride,
-          employee_state_insurance: Number(master.employee_state_insurance) || 0,
+          employee_state_insurance: esiOverride,
           loan_deduction:           (Number(master.loan_deduction) || 0) + activeLoanDeduction,
           other_deduction:          Number(master.other_deduction)          || 0,
           pf_employer:              Number(master.pf_employer)              || 0,
