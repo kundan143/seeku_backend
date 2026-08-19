@@ -115,7 +115,8 @@ exports.applyIncrement = async function (body) {
     const data = body.data || {};
     const {
       increment_type, increment_value, disbursement_month, disbursement_year,
-      arrear_months, total_arrear_amount, remarks, modified_by, modified_date,
+      arrear_months, da_arrear_months, standard_lop_days, da_lop_days, total_arrear_amount,
+      remarks, modified_by, modified_date,
       ...salaryFields
     } = data;
 
@@ -143,6 +144,9 @@ exports.applyIncrement = async function (body) {
         disbursement_month,
         disbursement_year,
         arrear_months: arrear_months || 0,
+        da_arrear_months: da_arrear_months || 0,
+        standard_lop_days: standard_lop_days || 0,
+        da_lop_days: da_lop_days || 0,
         total_arrear_amount: total_arrear_amount || 0,
         old_salary_snapshot: oldSnapshot,
         new_salary_snapshot: newSnapshot,

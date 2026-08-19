@@ -48,6 +48,21 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       defaultValue: 0,
     },
+    da_arrear_months: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    standard_lop_days: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    da_lop_days: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
     total_arrear_amount: {
       type: DataTypes.NUMERIC(12, 2),
       allowNull: false,

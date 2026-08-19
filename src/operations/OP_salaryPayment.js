@@ -229,28 +229,145 @@ function computeAttendance(workingDays, leave, manualUnapprovedLeaveDays) {
 
 function round2(n) { return Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100; }
 
-// Injects a visible "Arrears Included" note into the rendered slip HTML whenever this payment
-// carries a positive arrears_amount - done here rather than via a mergeTemplate placeholder so
-// it shows up regardless of whether the active PDF template was ever updated to reference one.
-function appendArrearsNote(html, sp, fmt, monthLabel) {
+// Mirrors employee-salary-master.component.ts's arrear math exactly, recomputed here from the
+// linked salary_increment_history row's stored snapshots/months/LOP-days rather than re-deriving
+// it from anything client-supplied, so the PDF always reflects what was actually recorded.
+const ARREAR_COMPONENT_FIELDS = [
+  'basic_salary', 'dearness_allowance', 'city_allowance', 'hra',
+  'conveyance', 'medical_allowance', 'travel_allowance', 'special_allowance'
+];
+
+function lopFactor(lopDays, months) {
+  const totalDays = (Number(months) || 0) * 30;
+  if (!totalDays) return 1;
+  const lop = Math.max(0, Number(lopDays) || 0);
+  return Math.max(0, Math.min(1, 1 - lop / totalDays));
+}
+
+// Returns null when this payment has no linked increment (nothing to break down), otherwise the
+// full column-wise breakdown for both arrear buckets, same shape as the increment panel's table.
+function computeArrearsBreakdown(sp) {
+  const oldSnap = sp.old_salary_snapshot, newSnap = sp.new_salary_snapshot;
+  if (!oldSnap || !newSnap) return null;
+
+  const arrearMonths = Number(sp.arrear_months) || 0;
+  const daArrearMonths = Number(sp.da_arrear_months) || 0;
+
+  const standardDeltaSum = ARREAR_COMPONENT_FIELDS
+    .reduce((sum, f) => sum + ((Number(newSnap[f]) || 0) - (Number(oldSnap[f]) || 0)), 0);
+  const daDelta = (Number(newSnap.dearness_allowance) || 0) - (Number(oldSnap.dearness_allowance) || 0);
+  const pfDelta = (Number(newSnap.pf_employee) || 0) - (Number(oldSnap.pf_employee) || 0);
+
+  const standardLopFactor = lopFactor(sp.standard_lop_days, arrearMonths);
+  const daLopFactorVal = lopFactor(sp.da_lop_days, daArrearMonths);
+
+  const standardGrossRaw = round2(standardDeltaSum * arrearMonths);
+  const daGrossRaw = round2(daDelta * daArrearMonths);
+
+  const standardLopDeduction = round2(standardGrossRaw * (1 - standardLopFactor));
+  const daLopDeduction = round2(daGrossRaw * (1 - daLopFactorVal));
+
+  const standardGross = round2(standardGrossRaw - standardLopDeduction);
+  const daGross = round2(daGrossRaw - daLopDeduction);
+
+  const standardPfDeduction = round2(pfDelta * arrearMonths * standardLopFactor);
+  const daPerMonthPf = round2(daDelta * 0.12);
+  const daPfDeduction = round2(daPerMonthPf * daArrearMonths * daLopFactorVal);
+
+  const standardNet = round2(standardGross - standardPfDeduction);
+  const daNet = round2(daGross - daPfDeduction);
+
+  return {
+    arrearMonths, daArrearMonths,
+    standardLopDays: Number(sp.standard_lop_days) || 0,
+    daLopDays: Number(sp.da_lop_days) || 0,
+    standardGrossRaw, daGrossRaw,
+    standardLopDeduction, daLopDeduction,
+    standardPfDeduction, daPfDeduction,
+    standardNet, daNet,
+    total: round2(standardNet + daNet),
+  };
+}
+
+function buildArrearsBreakdownTable(b, fmt) {
+  const row = (label, months, gross, lopDays, lopDeduction, pfDeduction, net) => `
+    <tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;">${label}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">${months}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">${fmt(gross)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">${lopDays}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">- ${fmt(lopDeduction)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">- ${fmt(pfDeduction)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;font-weight:bold;">${fmt(net)}</td>
+    </tr>`;
+
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;
+                font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#7a4a00;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="padding:6px 10px;text-align:left;border-bottom:2px solid #f0c36d;">Arrear Window</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">Months</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">Gross</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">LOP Days</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">LOP Deduction</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">PF (12%) Deduction</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">Net</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${row("Standard (Basic, HRA, City Allowance, Conveyance, Medical, Travel, Special &amp; DA)",
+              b.arrearMonths, b.standardGrossRaw, b.standardLopDays, b.standardLopDeduction, b.standardPfDeduction, b.standardNet)}
+        ${row("DA/PF backdate (1st April to before Effective From)",
+              b.daArrearMonths, b.daGrossRaw, b.daLopDays, b.daLopDeduction, b.daPfDeduction, b.daNet)}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="6" style="padding:6px 10px;text-align:right;font-weight:bold;">Total Arrears</td>
+          <td style="padding:6px 10px;text-align:right;font-weight:bold;">${fmt(b.total)}</td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+// Injects a visible "Arrears Included" note and, when the linked increment's snapshots are
+// available, a full column-wise breakdown table into the rendered slip HTML whenever this
+// payment carries a positive arrears_amount - done here rather than via a mergeTemplate
+// placeholder so it shows up regardless of whether the active PDF template was ever updated to
+// reference one.
+function insertArrearsBeforeRegdFooter(html, sp, fmt, monthLabel) {
   const arrears = Number(sp.arrears_amount) || 0;
   if (arrears <= 0) return html;
 
   const monthsLine = sp.arrear_months
     ? ` covering ${sp.arrear_months} month(s) of back pay from a salary increment`
     : " from a salary increment";
+  const breakdown = computeArrearsBreakdown(sp);
   const note = `
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;">
       <tr>
-        <td style="padding:12px 16px;background:#fff7e6;border:1px solid #f0c36d;border-radius:6px;
+        <td style="padding:12px 16px;background:#fff7e6;border:1px solid #f0c36d;border-radius:6px 6px 0 0;
                     font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#7a4a00;">
           <strong>Arrears Included:</strong> This ${monthLabel} ${sp.payment_year} payment includes a
           one-time arrears amount of <strong>${fmt(arrears)}</strong>${monthsLine}, added on top of the
           regular Net Salary.
         </td>
       </tr>
+      ${breakdown ? `
+      <tr>
+        <td style="padding:0 16px 12px;background:#fff7e6;border:1px solid #f0c36d;border-top:none;border-radius:0 0 6px 6px;">
+          ${buildArrearsBreakdownTable(breakdown, fmt)}
+        </td>
+      </tr>` : ""}
     </table>`;
 
+  // Land right before whichever of the two Regd. Office merge tags the template uses first, so
+  // arrears reads above that footer instead of trailing after everything at the very end.
+  const footerMarkerPattern = /\{\{\s*regd_office_line\s*\}\}|\{\{\s*regd_contact_line\s*\}\}/i;
+  const match = html.match(footerMarkerPattern);
+  if (match) {
+    return html.slice(0, match.index) + note + html.slice(match.index);
+  }
   if (/<\/body>/i.test(html)) {
     return html.replace(/<\/body>/i, note + "</body>");
   }
@@ -659,7 +776,12 @@ exports.generateSlip = async function (id) {
              rolm.pincode      AS regd_office_pincode,
              rolm.phone        AS regd_office_phone,
              rolm.email        AS regd_office_email,
-             sih.arrear_months AS arrear_months
+             sih.arrear_months AS arrear_months,
+             sih.da_arrear_months AS da_arrear_months,
+             sih.standard_lop_days AS standard_lop_days,
+             sih.da_lop_days AS da_lop_days,
+             sih.old_salary_snapshot AS old_salary_snapshot,
+             sih.new_salary_snapshot AS new_salary_snapshot
       FROM salary_payments sp
       LEFT JOIN users_master           um    ON um.id    = sp.user_id
       LEFT JOIN department_master      dm    ON dm.id    = um.department_id
@@ -735,7 +857,6 @@ exports.generateSlip = async function (id) {
       ? `Regd. Office: ${sp.regd_office_address}` + (regdCityStatePin ? `, ${regdCityStatePin}` : "")
       : "";
     const regdContactLine = [
-      sp.regd_office_phone ? `Phone: ${sp.regd_office_phone}` : null,
       sp.regd_office_email ? `Email: ${sp.regd_office_email}` : null,
     ].filter(Boolean).join("   |   ");
 
@@ -787,12 +908,15 @@ exports.generateSlip = async function (id) {
       remarks_line: sp.remarks ? `Remarks: ${sp.remarks}` : "",
     };
 
-    let mergedHtml = mergeTemplate(template.html_content, mergeData);
     // Arrears only show up if the active template happens to reference {{arrears_amount_fmt}} -
     // templates are user-authored HTML with no such placeholder baked in today, so this note is
-    // injected directly into the rendered markup instead, guaranteeing it's visible on every
-    // template whenever a payment actually carries arrears (arrears_amount > 0).
-    mergedHtml = appendArrearsNote(mergedHtml, sp, fmt, monthLabel);
+    // spliced directly into the raw template instead (before merging), guaranteeing it's visible
+    // on every template whenever a payment actually carries arrears (arrears_amount > 0). It's
+    // inserted right before the {{regd_office_line}}/{{regd_contact_line}} footer tags - wherever
+    // the template places the Regd. Office address/phone/email - so arrears always read above
+    // that footer instead of trailing after it at the very end of the document.
+    const htmlWithArrears = insertArrearsBeforeRegdFooter(template.html_content, sp, fmt, monthLabel);
+    const mergedHtml = mergeTemplate(htmlWithArrears, mergeData);
     await renderHtmlToPdfFile(mergedHtml, filePath);
 
     await salaryPayment.update({ slip_url: slipUrl, pdf_template_id: template.id }, { where: { id }, transaction: t });
