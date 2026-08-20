@@ -10,12 +10,12 @@ router.get('/getAllRows', async (req, res, next) => {
 
 // 2 = Add Row
 router.post('/addRow', async (req, res, next) => {
-	return res.send(await OP_RoleMaster.addData(req.body));
+	return res.send(await OP_RoleMaster.addData(req.body, req.headers.userId));
 });
 
 // // 3 = Update Row
 router.post('/updateRow', async (req, res, next) => {
-	return res.send(await OP_RoleMaster.updateData(req.body));
+	return res.send(await OP_RoleMaster.updateData(req.body, req.headers.userId));
 });
 
 // // 4 = Delete Row

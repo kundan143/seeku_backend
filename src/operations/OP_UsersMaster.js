@@ -11,8 +11,29 @@ const { Op, QueryTypes } = require("sequelize");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { copyRoleTemplateToUser } = require("./OP_RolePermission");
+const { isSuperAdminUser, isSuperAdminRole } = require("../services/profileAccess");
 const transporter = require("../services/mailTransporterService");
 const saltRounds = 10;
+
+// A non-Super-Admin can never touch the role_id of a Super Admin employee, nor promote anyone
+// (themselves included) into a Super Admin role - only an existing Super Admin can do either.
+// Returns null when the change is allowed, or an error message when it must be blocked.
+async function guardSuperAdminRoleChange(requesterId, targetUserId, newRoleId) {
+  if (!newRoleId) return null;
+  if (await isSuperAdminUser(requesterId)) return null;
+
+  const currentUser = await usersMaster.findByPk(targetUserId, { attributes: ["role_id"] });
+  const currentRoleId = currentUser ? currentUser.role_id : null;
+  if (String(currentRoleId) === String(newRoleId)) return null; // no actual role change
+
+  if (currentRoleId && (await isSuperAdminRole(currentRoleId))) {
+    return "Only a Super Admin can change the role of a Super Admin employee.";
+  }
+  if (await isSuperAdminRole(newRoleId)) {
+    return "Only a Super Admin can assign the Super Admin role.";
+  }
+  return null;
+}
 
 // emp_code = YYMMDD (from doj) + 4-digit sequence that resets per doj (e.g. 2607150001)
 async function generateEmpCode(transaction, doj) {
@@ -234,12 +255,19 @@ exports.bulkImport = async function (body) {
   }
 };
 
-exports.updateData = async function (body) {
+exports.updateData = async function (body, requesterId) {
   let t;
   try {
     // Basic input validation
     if (!body.userDetails || !body.id) {
       throw new TypeError("Missing required field: data or id");
+    }
+
+    const roleBlockReason = await guardSuperAdminRoleChange(requesterId, body.id, body.userDetails.role_id);
+    if (roleBlockReason) {
+      responseCodes.FORBIDDEN.data = null;
+      responseCodes.FORBIDDEN.message = roleBlockReason;
+      return responseCodes.FORBIDDEN;
     }
 
     t = await sequelize.transaction();
@@ -321,11 +349,18 @@ exports.updateData = async function (body) {
 // resets the user's permissions to that role's current template —
 // generic profile edits that happen to touch role_id should not silently
 // wipe a user's hand-tuned permissions as a side effect.
-exports.assignRole = async function (body) {
+exports.assignRole = async function (body, requesterId) {
   let t;
   try {
     if (!body.id || !body.role_id) {
       throw new TypeError("Missing required field: id or role_id");
+    }
+
+    const roleBlockReason = await guardSuperAdminRoleChange(requesterId, body.id, body.role_id);
+    if (roleBlockReason) {
+      responseCodes.FORBIDDEN.data = null;
+      responseCodes.FORBIDDEN.message = roleBlockReason;
+      return responseCodes.FORBIDDEN;
     }
 
     t = await sequelize.transaction();
@@ -412,6 +447,7 @@ exports.getAllData = async function (body) {
       status = ``;
     }
     var query = `SELECT concat(um.first_name, ' ',um.middle_name, ' ',um.last_name) as full_name,  rm.role_name,
+    rm.is_super_admin as role_is_super_admin,
     dm.designation as designation_name, dm2."name" as department_name, lm."name" as location_name, gm.gender_name, etm.emp_type_name,
     concat(um2.first_name, ' ',um2.last_name) as manager_name, msm.status_name as marital_status_name, um.*
 		FROM users_master AS um
@@ -517,7 +553,7 @@ exports.getOneData = async function (id) {
     msm.id as marital_status_id, bgm.id as blood_group_id, etm.id as emp_type_id,
     dm.id as department_id, dm2.id as designation_id, um2.id as reporting_manager_id,
     cm.id as nationality_id, ec.contact_name, rm.id as relation_id, bm.id as bank_id,
-    lm.id as location_id
+    lm.id as location_id, um.role_id, role_m.is_super_admin as role_is_super_admin
     from users_master as um
     LEFT JOIN gender_master gm on gm.id = um.gender_id
     LEFT JOIN marital_status_master msm on msm.id = um.marital_status_id
@@ -533,6 +569,7 @@ exports.getOneData = async function (id) {
     LEFT JOIN users_bank_details ubd on ubd.user_id = um.id
     LEFT JOIN bank_master bm on bm.id = ubd.bank_id
     LEFT JOIN users_salary_details usd ON usd.user_id = um.id
+    LEFT JOIN role_master role_m on role_m.id = um.role_id
 		WHERE um.id = :id
     ORDER BY usd.id DESC
     LIMIT 1`;

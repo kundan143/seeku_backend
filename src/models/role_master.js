@@ -12,6 +12,12 @@ module.exports = function (sequelize, DataTypes) {
 			type: DataTypes.STRING(255),
 			allowNull: false
 		},
+		is_super_admin:
+		{
+			type: DataTypes.BOOLEAN,
+			allowNull: false,
+			defaultValue: false
+		},
 	}, {
 		sequelize,
 		tableName: 'role_master',
