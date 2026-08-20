@@ -24,6 +24,11 @@ router.post('/getAllSummary', async (req, res, next) => {
     return res.send(await OP_AttendancePunch.getAllSummary(req.body));
 });
 
+// 5b = Company-wide Present/Late/WFH/Absent counts for today (dashboard widgets)
+router.get('/getTodayStats', async (req, res, next) => {
+    return res.send(await OP_AttendancePunch.getTodayStats());
+});
+
 // 6 = All raw punches for one employee on one day (drill-down)
 router.post('/getRawPunches', async (req, res, next) => {
     return res.send(await OP_AttendancePunch.getRawPunchesByUserDate(req.body));
