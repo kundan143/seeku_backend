@@ -85,9 +85,89 @@ exports.bulkImport = async function (body) {
   }
 };
 
+// Manual punches for one or more employees, for cases a biometric device missed (or there's no
+// device at all) - the MANUAL source value the punch_date column comment already anticipated
+// but no code path ever used until now. HR picks employees directly (no biometric_emp_code
+// mapping needed, unlike bulkImport). body.data is an array of {user_id, punch_time, direction}
+// rows - the frontend expands "N employees x date range, Sundays/holidays excluded" into this
+// flat list before calling in, same per-row create/duplicate/failure handling as bulkImport.
+exports.addManualPunch = async function (body) {
+  try {
+    const rows = Array.isArray(body.data) ? body.data : (body.data ? [body.data] : []);
+    const created_by = body.created_by;
+    const created_date = body.created_date;
+
+    if (!rows.length) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "No punches to add.";
+      return responseCodes.BAD_REQUEST;
+    }
+
+    // Never trust the frontend's own holiday-skipping to have actually run (a stale cached
+    // holiday list, or a direct API call bypassing the UI entirely) - re-check every row's date
+    // against holidays_master fresh here, same "recompute server-side" convention as PF/PT/ESI.
+    // Optional holidays are left workable, matching payroll's own working-day convention.
+    const holidayRows = await sequelize.query(
+      `SELECT holiday_date::TEXT AS holiday_date FROM holidays_master WHERE is_optional = false AND status = 1`,
+      { type: QueryTypes.SELECT }
+    );
+    const holidayDates = new Set(holidayRows.map((h) => h.holiday_date));
+
+    let successCount = 0;
+    let duplicateCount = 0;
+    let holidaySkippedCount = 0;
+    const failures = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        if (!row.user_id || !row.punch_time) {
+          throw new Error("Employee and Punch Time are required.");
+        }
+        const punchTime = new Date(row.punch_time);
+        if (isNaN(punchTime.getTime())) {
+          throw new Error("Invalid Punch Time.");
+        }
+        const punchDate = punchTime.toISOString().slice(0, 10);
+        if (holidayDates.has(punchDate)) {
+          holidaySkippedCount++;
+          continue;
+        }
+        await attendancePunches.create({
+          user_id: row.user_id,
+          punch_time: punchTime,
+          punch_date: punchDate,
+          direction: row.direction || null,
+          device_emp_code: null,
+          source: 'MANUAL',
+          is_deleted: 0,
+          created_by,
+          created_date,
+        });
+        successCount++;
+      } catch (e) {
+        if (e?.parent?.code === '23505') {
+          duplicateCount++;
+        } else {
+          failures.push({ row: i + 1, user_id: row.user_id || null, error: e.message || 'Failed to add row.' });
+        }
+      }
+    }
+
+    responseCodes.SUCCESS.data = { successCount, duplicateCount, holidaySkippedCount, failedCount: failures.length, failures };
+    responseCodes.SUCCESS.message = `Added ${successCount} of ${rows.length} punch(es) (${duplicateCount} already existed, ${holidaySkippedCount} skipped as holidays).`;
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Add Punches";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 // One row per day in the given month, with the earliest and latest punch of that day.
-// Days that have no raw punches but DO have an approved regularization still show up,
-// using the employee's requested in/out times, and are flagged via is_regularized.
+// Days that have no raw punches but DO have an approved regularization still show up, using the
+// employee's requested in/out times, flagged via is_regularized. An approved WFH day shows up
+// too, with no punch times at all (there's nothing to show - see is_wfh).
 exports.getMonthSummaryByUser = async function (body) {
   try {
     const { user_id, year, month } = body;
@@ -113,14 +193,25 @@ exports.getMonthSummaryByUser = async function (body) {
                         and is_deleted = 0
                         and extract(year from punch_date) = :year
                         and extract(month from punch_date) = :month
+                    ),
+                    wfh_summary as (
+                      select wfh_date as punch_date
+                      from wfh_requests
+                      where user_id = :user_id
+                        and status = 1
+                        and is_deleted = 0
+                        and extract(year from wfh_date) = :year
+                        and extract(month from wfh_date) = :month
                     )
-                    select coalesce(ps.punch_date, rs.punch_date) as punch_date,
+                    select coalesce(ps.punch_date, rs.punch_date, ws.punch_date) as punch_date,
                       coalesce(ps.first_punch, rs.first_punch) as first_punch,
                       coalesce(ps.last_punch, rs.last_punch) as last_punch,
                       coalesce(ps.punch_count, 0) as punch_count,
-                      (rs.punch_date is not null) as is_regularized
+                      (rs.punch_date is not null) as is_regularized,
+                      (ws.punch_date is not null) as is_wfh
                     from punch_summary ps
                     full outer join reg_summary rs on rs.punch_date = ps.punch_date
+                    full outer join wfh_summary ws on ws.punch_date = coalesce(ps.punch_date, rs.punch_date)
                     order by punch_date asc;`;
     const data = await sequelize.query(query, { replacements: { user_id, year, month }, type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = data;
@@ -134,7 +225,7 @@ exports.getMonthSummaryByUser = async function (body) {
 };
 
 // Admin view: every employee x day in a date range, with first/last punch.
-// Same approved-regularization merge as getMonthSummaryByUser, across all employees.
+// Same approved-regularization/WFH merge as getMonthSummaryByUser, across all employees.
 exports.getAllSummary = async function (body) {
   try {
     const { from_date, to_date, user_id } = body;
@@ -159,17 +250,27 @@ exports.getAllSummary = async function (body) {
                         and is_deleted = 0
                         and punch_date between :from_date and :to_date
                         ${userFilter}
+                    ),
+                    wfh_summary as (
+                      select user_id, wfh_date as punch_date
+                      from wfh_requests
+                      where status = 1
+                        and is_deleted = 0
+                        and wfh_date between :from_date and :to_date
+                        ${userFilter}
                     )
-                    select coalesce(ps.user_id, rs.user_id) as user_id,
+                    select coalesce(ps.user_id, rs.user_id, ws.user_id) as user_id,
                       CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) as user_name,
-                      coalesce(ps.punch_date, rs.punch_date) as punch_date,
+                      coalesce(ps.punch_date, rs.punch_date, ws.punch_date) as punch_date,
                       coalesce(ps.first_punch, rs.first_punch) as first_punch,
                       coalesce(ps.last_punch, rs.last_punch) as last_punch,
                       coalesce(ps.punch_count, 0) as punch_count,
-                      (rs.punch_date is not null) as is_regularized
+                      (rs.punch_date is not null) as is_regularized,
+                      (ws.punch_date is not null) as is_wfh
                     from punch_summary ps
                     full outer join reg_summary rs on rs.user_id = ps.user_id and rs.punch_date = ps.punch_date
-                    join users_master um on um.id = coalesce(ps.user_id, rs.user_id)
+                    full outer join wfh_summary ws on ws.user_id = coalesce(ps.user_id, rs.user_id) and ws.punch_date = coalesce(ps.punch_date, rs.punch_date)
+                    join users_master um on um.id = coalesce(ps.user_id, rs.user_id, ws.user_id)
                     order by punch_date desc, user_name asc;`;
     const data = await sequelize.query(query, { replacements: { from_date, to_date, user_id: user_id || null }, type: QueryTypes.SELECT });
     responseCodes.SUCCESS.data = data;

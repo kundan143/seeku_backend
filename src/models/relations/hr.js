@@ -24,6 +24,7 @@ h.candidates = require("../candidates")(sequelize, DataTypes);
 h.employeeAssets = require("../employee_assets")(sequelize, DataTypes);
 h.attendancePunches = require("../attendance_punches")(sequelize, DataTypes);
 h.attendanceRegularization = require("../attendance_regularization")(sequelize, DataTypes);
+h.wfhRequests = require("../wfh_requests")(sequelize, DataTypes);
 h.attendancePolicy = require("../attendance_policy")(sequelize, DataTypes);
 h.hrPolicy = require("../hr_policy")(sequelize, DataTypes);
 h.medicalInsurance = require("../medical_insurance")(sequelize, DataTypes);
@@ -142,6 +143,11 @@ h.attendanceRegularization.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
 h.attendanceRegularization.belongsTo(m.usersMaster, { as: 'approved_by_user', foreignKey: 'approved_by' });
 h.attendanceRegularization.belongsTo(m.usersMaster, { as: 'rejected_by_user', foreignKey: 'rejected_by' });
 h.attendanceRegularization.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+
+h.wfhRequests.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
+h.wfhRequests.belongsTo(m.usersMaster, { as: 'approved_by_user', foreignKey: 'approved_by' });
+h.wfhRequests.belongsTo(m.usersMaster, { as: 'rejected_by_user', foreignKey: 'rejected_by' });
+h.wfhRequests.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 
 h.attendancePolicy.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 h.attendancePolicy.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });

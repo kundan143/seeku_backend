@@ -19,6 +19,7 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_hr + '/employeeAssets', jwt, apiActivityLogger, require('../hr/employeeAssetsAPI'));
     app.use(ROOT_BASE_URL_hr + '/attendancePunch', jwt, apiActivityLogger, require('../hr/attendancePunchAPI'));
     app.use(ROOT_BASE_URL_hr + '/attendanceRegularization', jwt, apiActivityLogger, require('../hr/attendanceRegularizationAPI'));
+    app.use(ROOT_BASE_URL_hr + '/wfhRequests', jwt, apiActivityLogger, require('../hr/wfhRequestsAPI'));
     app.use(ROOT_BASE_URL_hr + '/attendancePolicy', jwt, apiActivityLogger, require('../hr/attendancePolicyAPI'));
     app.use(ROOT_BASE_URL_hr + '/hrPolicy', jwt, apiActivityLogger, require('../hr/hrPolicyAPI'));
     app.use(ROOT_BASE_URL_hr + '/medicalInsurance', jwt, apiActivityLogger, require('../hr/medicalInsuranceAPI'));
