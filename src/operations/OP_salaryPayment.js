@@ -715,10 +715,14 @@ exports.processBulkPayroll = async function (body) {
         const standardGross = EARNING_KEYS.reduce((sum, k) => sum + (Number(master[k]) || 0), 0);
         const basePT = Number(master.professional_tax) || 0;
         const ptOverride = computeProfessionalTax(gross_salary, master.dob);
-        // Same fresh-recompute treatment for ESI (Employee) - eligibility off the standard
-        // gross, deducted amount off the actual gross paid this month (gross_salary, prorated).
+        // ESI (Employee) is editable per row in the bulk preview for this run only, same as
+        // Income Tax - trust the client's value when they've touched it (emp.esi_touched),
+        // otherwise auto-compute fresh: eligibility off the standard gross, deducted amount off
+        // the actual gross paid this month (gross_salary, prorated).
         const baseESI = Number(master.employee_state_insurance) || 0;
-        const esiOverride = computeEmployeeESI(standardGross, gross_salary);
+        const esiOverride = emp.esi_touched
+          ? (Number(emp.employee_state_insurance) || 0)
+          : computeEmployeeESI(standardGross, gross_salary);
         // PF (Employee) is 12% of Basic+DA actually paid this month, not the full monthly
         // figure - LOP/attendance shortfalls already prorated basic_salary/dearness_allowance
         // down via prorateEarnings above, so PF has to follow the same ratio instead of staying
