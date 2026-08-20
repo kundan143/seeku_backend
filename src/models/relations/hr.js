@@ -9,6 +9,7 @@ h.emergencyContacts = require("../emergency_contacts")(sequelize, DataTypes);
 h.usersBankDetails = require("../users_bank_details")(sequelize, DataTypes);
 h.usersSalaryDetails = require("../users_salary_details")(sequelize, DataTypes);
 h.salaryPayment = require("../salary_payment")(sequelize, DataTypes);
+h.salarySlipMailLog = require("../salary_slip_mail_log")(sequelize, DataTypes);
 h.userLeavesDetails = require("../users_leave_details")(sequelize, DataTypes);
 h.employeeExpenses = require("../employee_expense")(sequelize, DataTypes);
 h.employeeExpenseTravelLegs = require("../employee_expense_travel_leg")(sequelize, DataTypes);
@@ -17,6 +18,7 @@ h.loanAdvancePaymentHistory = require("../loan_advance_payment_history")(sequeli
 h.holidaysMaster = require("../holidays_master")(sequelize, DataTypes);
 h.companyNewsMaster = require("../company_news")(sequelize, DataTypes);
 h.userLeaveBalance = require("../user_leave_balance")(sequelize, DataTypes);
+h.employeeIncentiveDetails = require("../employee_incentive_details")(sequelize, DataTypes);
 h.userDocumentMaster = require("../user_document_master")(sequelize, DataTypes);
 h.candidates = require("../candidates")(sequelize, DataTypes);
 h.employeeAssets = require("../employee_assets")(sequelize, DataTypes);
@@ -26,6 +28,7 @@ h.attendancePolicy = require("../attendance_policy")(sequelize, DataTypes);
 h.hrPolicy = require("../hr_policy")(sequelize, DataTypes);
 h.medicalInsurance = require("../medical_insurance")(sequelize, DataTypes);
 h.incentiveMaster = require("../incentive_master")(sequelize, DataTypes);
+h.salaryIncrementHistory = require("../salary_increment_history")(sequelize, DataTypes);
 h.socialPosts = require("../social_posts")(sequelize, DataTypes);
 h.socialPostLikes = require("../social_post_likes")(sequelize, DataTypes);
 h.socialPostComments = require("../social_post_comments")(sequelize, DataTypes);
@@ -46,11 +49,22 @@ h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
 h.usersSalaryDetails.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
 
+h.salaryIncrementHistory.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
+h.salaryIncrementHistory.belongsTo(h.usersSalaryDetails, { foreignKey: 'salary_detail_id' });
+h.salaryIncrementHistory.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
+h.salaryIncrementHistory.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
+h.salaryIncrementHistory.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
+
 h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
 h.salaryPayment.belongsTo(h.usersSalaryDetails, { foreignKey: 'salary_detail_id' });
 h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
 h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
 h.salaryPayment.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
+h.salaryPayment.belongsTo(h.salaryIncrementHistory, { foreignKey: 'increment_id' });
+
+h.salarySlipMailLog.belongsTo(h.salaryPayment, { foreignKey: 'salary_payment_id' });
+h.salarySlipMailLog.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'user_id' });
+h.salarySlipMailLog.belongsTo(m.usersMaster, { as: 'sent_by_user', foreignKey: 'sent_by' });
 
 
 h.userLeavesDetails.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
@@ -96,6 +110,11 @@ h.userLeaveBalance.belongsTo(m.leaveTypeMaster, { foreignKey: 'leave_type_id' })
 h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'created_by' });
 h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'updated_by' });
 h.userLeaveBalance.belongsTo(m.usersMaster, { foreignKey: 'deleted_by' });
+
+h.employeeIncentiveDetails.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'employee_id' });
+h.employeeIncentiveDetails.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
+h.employeeIncentiveDetails.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
+h.employeeIncentiveDetails.belongsTo(m.usersMaster, { as: 'deleted_by_user', foreignKey: 'deleted_by' });
 
 h.userDocumentMaster.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
 h.userDocumentMaster.belongsTo(m.usersMaster, { as: 'created_by_user',  foreignKey: 'created_by' });

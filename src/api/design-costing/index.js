@@ -12,4 +12,6 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_DESIGN_COSTING + '/innerSheathingInformation', jwt, apiActivityLogger, require('../design-costing/innerSheathingInformationAPI'));
     app.use(ROOT_BASE_URL_DESIGN_COSTING + '/outerSheathingInformation', jwt, apiActivityLogger, require('../design-costing/outerSheathingInformationAPI'));
     app.use(ROOT_BASE_URL_DESIGN_COSTING + '/laidUpInformation', jwt, apiActivityLogger, require('../design-costing/laidUpInformationAPI'));
+    app.use(ROOT_BASE_URL_DESIGN_COSTING + '/cableSpecDocument', jwt, apiActivityLogger, require('../design-costing/cableSpecDocumentAPI'));
+    app.use(ROOT_BASE_URL_DESIGN_COSTING + '/conductorInsulationDesign', jwt, apiActivityLogger, require('../design-costing/conductorInsulationDesignAPI'));
 };

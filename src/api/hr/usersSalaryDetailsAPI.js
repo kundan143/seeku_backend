@@ -34,4 +34,19 @@ router.post('/getRowsByUser', async (req, res, next) => {
     return res.send(await OP_usersSalaryDetails.getDataByUserId(req.body.user_id));
 });
 
+// 7 = Get Salary Grouped By Department/Designation
+router.post('/getGroupedSalary', async (req, res, next) => {
+    return res.send(await OP_usersSalaryDetails.getGroupedSalary(req.body.group_by));
+});
+
+// 8 = Apply Increment (snapshots the old salary into salary_increment_history, then saves the new one)
+router.post('/applyIncrement', async (req, res, next) => {
+    return res.send(await OP_usersSalaryDetails.applyIncrement(req.body));
+});
+
+// 9 = Revert Increment (restores users_salary_details from a salary_increment_history row's old_salary_snapshot)
+router.post('/revertIncrement', async (req, res, next) => {
+    return res.send(await OP_usersSalaryDetails.revertIncrement(req.body));
+});
+
 module.exports = router;

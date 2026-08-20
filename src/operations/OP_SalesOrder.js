@@ -54,7 +54,6 @@ exports.addData = async function (body) {
     return responseCodes.SUCCESS;
   } catch (e) {
     await t.rollback();
-    console.error("Error adding sales order:", e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Sales Order.";
     return responseCodes.BAD_REQUEST;

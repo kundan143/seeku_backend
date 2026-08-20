@@ -319,7 +319,6 @@ exports.generateOfferLetter = async function (id) {
     responseCodes.SUCCESS.message = "Offer letter generated successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to generate offer letter";
     return responseCodes.BAD_REQUEST;

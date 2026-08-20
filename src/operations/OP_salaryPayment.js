@@ -1,4 +1,4 @@
-const { salaryPayment, pdfTemplateMaster } = require("../models");
+const { salaryPayment, pdfTemplateMaster, salarySlipMailLog } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { QueryTypes, Op } = require("sequelize");
@@ -7,6 +7,7 @@ const path = require("path");
 const transporter = require("../services/mailTransporterService");
 const OP_usersLeave = require("./OP_usersLeave");
 const { mergeTemplate, renderHtmlToPdfFile, getLogoDataUri } = require("../services/pdfTemplateService");
+const logger = require("../services/dailyLogService");
 
 exports.addData = async function (body) {
   const t = await sequelize.transaction();
@@ -91,11 +92,13 @@ exports.getAllData = async function () {
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              dm.name  AS department_name, um.email,
              dm2.designation AS designation_name,
+             lm.name AS location_name,
              TO_CHAR(TO_DATE(sp.payment_month::TEXT, 'MM'), 'Month') AS month_name
       FROM salary_payments sp
       LEFT JOIN users_master      um   ON um.id   = sp.user_id
       LEFT JOIN department_master dm   ON dm.id   = um.department_id
       LEFT JOIN designation_master dm2 ON dm2.id  = um.designation_id
+      LEFT JOIN office_location_master lm ON lm.id = um.location_id
       WHERE sp.status = 1
       ORDER BY sp.payment_year DESC, sp.payment_month DESC, sp.id DESC`;
     const data = await sequelize.query(query, { type: QueryTypes.SELECT });
@@ -172,7 +175,8 @@ async function getMonthWorkingDays(payment_month, payment_year) {
   const year  = parseInt(payment_year,  10);
   const month = parseInt(payment_month, 10);
 
-  const daysInMonth = new Date(year, month, 0).getDate();
+  // const daysInMonth = new Date(year, month, 0).getDate();
+  const daysInMonth = 30;
 
   // Collect all Sunday dates in the month
   const sundaySet = new Set();
@@ -204,7 +208,7 @@ async function getMonthWorkingDays(payment_month, payment_year) {
     total_days:      daysInMonth,
     sundays:         sundaySet.size,
     public_holidays: nonSundayHolidays.length,
-    working_days:    daysInMonth - sundaySet.size - nonSundayHolidays.length,
+    working_days:    daysInMonth - nonSundayHolidays.length,
     holiday_list:    holidays,
     start_date:      startDate,
     end_date:        endDate,
@@ -226,23 +230,240 @@ function computeAttendance(workingDays, leave, manualUnapprovedLeaveDays) {
 }
 
 function round2(n) { return Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100; }
+
+// Mirrors employee-salary-master.component.ts's arrear math exactly, recomputed here from the
+// linked salary_increment_history row's stored snapshots/months/LOP-days rather than re-deriving
+// it from anything client-supplied, so the PDF always reflects what was actually recorded.
+const ARREAR_COMPONENT_FIELDS = [
+  'basic_salary', 'dearness_allowance', 'city_allowance', 'hra',
+  'conveyance', 'medical_allowance', 'travel_allowance', 'special_allowance'
+];
+
+function lopFactor(lopDays, months) {
+  const totalDays = (Number(months) || 0) * 30;
+  if (!totalDays) return 1;
+  const lop = Math.max(0, Number(lopDays) || 0);
+  return Math.max(0, Math.min(1, 1 - lop / totalDays));
+}
+
+// Returns null when this payment has no linked increment (nothing to break down), otherwise the
+// full column-wise breakdown for both arrear buckets, same shape as the increment panel's table.
+function computeArrearsBreakdown(sp) {
+  const oldSnap = sp.old_salary_snapshot, newSnap = sp.new_salary_snapshot;
+  if (!oldSnap || !newSnap) return null;
+
+  const arrearMonths = Number(sp.arrear_months) || 0;
+  const daArrearMonths = Number(sp.da_arrear_months) || 0;
+
+  const standardDeltaSum = ARREAR_COMPONENT_FIELDS
+    .reduce((sum, f) => sum + ((Number(newSnap[f]) || 0) - (Number(oldSnap[f]) || 0)), 0);
+  const daDelta = (Number(newSnap.dearness_allowance) || 0) - (Number(oldSnap.dearness_allowance) || 0);
+  const pfDelta = (Number(newSnap.pf_employee) || 0) - (Number(oldSnap.pf_employee) || 0);
+
+  const standardLopFactor = lopFactor(sp.standard_lop_days, arrearMonths);
+  const daLopFactorVal = lopFactor(sp.da_lop_days, daArrearMonths);
+
+  const standardGrossRaw = round2(standardDeltaSum * arrearMonths);
+  const daGrossRaw = round2(daDelta * daArrearMonths);
+
+  const standardLopDeduction = round2(standardGrossRaw * (1 - standardLopFactor));
+  const daLopDeduction = round2(daGrossRaw * (1 - daLopFactorVal));
+
+  const standardGross = round2(standardGrossRaw - standardLopDeduction);
+  const daGross = round2(daGrossRaw - daLopDeduction);
+
+  const standardPfDeduction = round2(pfDelta * arrearMonths * standardLopFactor);
+  const daPerMonthPf = round2(daDelta * 0.12);
+  const daPfDeduction = round2(daPerMonthPf * daArrearMonths * daLopFactorVal);
+
+  const standardNet = round2(standardGross - standardPfDeduction);
+  const daNet = round2(daGross - daPfDeduction);
+
+  return {
+    arrearMonths, daArrearMonths,
+    standardLopDays: Number(sp.standard_lop_days) || 0,
+    daLopDays: Number(sp.da_lop_days) || 0,
+    standardGrossRaw, daGrossRaw,
+    standardLopDeduction, daLopDeduction,
+    standardPfDeduction, daPfDeduction,
+    standardNet, daNet,
+    total: round2(standardNet + daNet),
+  };
+}
+
+function buildArrearsBreakdownTable(b, fmt) {
+  const row = (label, months, gross, lopDays, lopDeduction, pfDeduction, net) => `
+    <tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;">${label}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">${months}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">${fmt(gross)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">${lopDays}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">- ${fmt(lopDeduction)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;">- ${fmt(pfDeduction)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #f0c36d;text-align:right;font-weight:bold;">${fmt(net)}</td>
+    </tr>`;
+
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;
+                font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#7a4a00;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="padding:6px 10px;text-align:left;border-bottom:2px solid #f0c36d;">Arrear Window</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">Months</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">Gross</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">LOP Days</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">LOP Deduction</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">PF (12%) Deduction</th>
+          <th style="padding:6px 10px;text-align:right;border-bottom:2px solid #f0c36d;">Net</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${row("Standard (Basic, HRA, City Allowance, Conveyance, Medical, Travel, Special &amp; DA)",
+              b.arrearMonths, b.standardGrossRaw, b.standardLopDays, b.standardLopDeduction, b.standardPfDeduction, b.standardNet)}
+        ${row("DA/PF backdate (1st April to before Effective From)",
+              b.daArrearMonths, b.daGrossRaw, b.daLopDays, b.daLopDeduction, b.daPfDeduction, b.daNet)}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="6" style="padding:6px 10px;text-align:right;font-weight:bold;">Total Arrears</td>
+          <td style="padding:6px 10px;text-align:right;font-weight:bold;">${fmt(b.total)}</td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+// Injects a visible "Arrears Included" note and, when the linked increment's snapshots are
+// available, a full column-wise breakdown table into the rendered slip HTML whenever this
+// payment carries a positive arrears_amount - done here rather than via a mergeTemplate
+// placeholder so it shows up regardless of whether the active PDF template was ever updated to
+// reference one.
+function insertArrearsBeforeRegdFooter(html, sp, fmt, monthLabel) {
+  const arrears = Number(sp.arrears_amount) || 0;
+  if (arrears <= 0) return html;
+
+  const monthsLine = sp.arrear_months
+    ? ` covering ${sp.arrear_months} month(s) of back pay from a salary increment`
+    : " from a salary increment";
+  const breakdown = computeArrearsBreakdown(sp);
+  const note = `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;">
+      <tr>
+        <td style="padding:12px 16px;background:#fff7e6;border:1px solid #f0c36d;border-radius:6px 6px 0 0;
+                    font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#7a4a00;">
+          <strong>Arrears Included:</strong> This ${monthLabel} ${sp.payment_year} payment includes a
+          one-time arrears amount of <strong>${fmt(arrears)}</strong>${monthsLine}, added on top of the
+          regular Net Salary.
+        </td>
+      </tr>
+      ${breakdown ? `
+      <tr>
+        <td style="padding:0 16px 12px;background:#fff7e6;border:1px solid #f0c36d;border-top:none;border-radius:0 0 6px 6px;">
+          ${buildArrearsBreakdownTable(breakdown, fmt)}
+        </td>
+      </tr>` : ""}
+    </table>`;
+
+  // Land right before whichever of the two Regd. Office merge tags the template uses first, so
+  // arrears reads above that footer instead of trailing after everything at the very end.
+  const footerMarkerPattern = /\{\{\s*regd_office_line\s*\}\}|\{\{\s*regd_contact_line\s*\}\}/i;
+  const match = html.match(footerMarkerPattern);
+  if (match) {
+    return html.slice(0, match.index) + note + html.slice(match.index);
+  }
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, note + "</body>");
+  }
+  return html + note;
+}
+
+// PDF templates are user-authored plain HTML merged by simple {{tag}} substitution
+// (mergeTemplate below) - any `*ngIf="x > 0"` attribute on a row is decorative only and never
+// actually hides anything at render time. For merge tags that should genuinely disappear when
+// there's nothing to show (LWF outside December, for one), the enclosing row is stripped from
+// the raw template here, before merging, whenever the given value isn't greater than 0. Assumes
+// the tag sits in a single flat row with no nested <div> between the row's opening tag and its
+// closing </div> - true for every deduction/earning row in the default template.
+function stripRowIfZero(html, mergeTag, value) {
+  if (Number(value) > 0) return html;
+  // The (?!<\/div>) guards stop the lazy [\s\S] from crossing an earlier sibling row's closing
+  // tag, which would otherwise swallow that whole preceding row too - the div-open this starts
+  // from must be the nearest one before the merge tag with no </div> in between.
+  const rowPattern = new RegExp(
+    `<div\\b[^>]*>(?:(?!<\\/div>)[\\s\\S])*?\\{\\{\\s*${mergeTag}\\s*\\}\\}(?:(?!<\\/div>)[\\s\\S])*?<\\/div>`,
+    "i"
+  );
+  return html.replace(rowPattern, "");
+}
+
+// Rows to drop from the slip entirely when their underlying salary_payments column is 0 -
+// field is the raw sp.* column (used for the >0 check), tag is the {{...}}_fmt merge tag whose
+// row gets removed.
+const ZERO_HIDE_MERGE_TAGS = [
+  { field: "city_allowance",           tag: "city_allowance_fmt" },
+  { field: "conveyance",               tag: "conveyance_fmt" },
+  { field: "pf_employee",              tag: "pf_employee_fmt" },
+  { field: "professional_tax",         tag: "professional_tax_fmt" },
+  { field: "income_tax",               tag: "income_tax_fmt" },
+  { field: "employee_state_insurance", tag: "employee_state_insurance_fmt" },
+  { field: "loan_deduction",           tag: "loan_deduction_fmt" },
+  { field: "other_deduction",          tag: "other_deduction_fmt" },
+  { field: "lwf_amount",               tag: "lwf_amount_fmt" },
+];
+
 function clampRatio(paidDays, workingDays) {
   return workingDays > 0 ? Math.max(0, Math.min(1, paidDays / workingDays)) : 1;
 }
 const EARNING_KEYS = ['basic_salary','dearness_allowance','city_allowance','hra','conveyance','medical_allowance','travel_allowance','special_allowance','bonus'];
 // Prorates each earning line by ratio and sums the already-rounded lines for gross_salary,
 // so an itemized earnings table always adds up exactly to the printed Gross Salary.
-function prorateEarnings(master, ratio) {
+// When bonusOverride is given (an incentive was disbursed this month), it replaces the
+// master's configured bonus entirely and is paid in full, unprorated by attendance.
+function prorateEarnings(master, ratio, bonusOverride) {
   const fields = {};
   let gross = 0;
-  EARNING_KEYS.forEach(k => { const v = round2(Number(master[k]) * ratio); fields[k] = v; gross += v; });
+  EARNING_KEYS.forEach(k => {
+    const v = (k === 'bonus' && bonusOverride != null) ? round2(Number(bonusOverride)) : round2(Number(master[k]) * ratio);
+    fields[k] = v;
+    gross += v;
+  });
   return { fields, gross_salary: round2(gross) };
+}
+
+function calculateAge(dob) {
+  if (!dob) return null;
+  const dobDate = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - dobDate.getFullYear();
+  const monthDiff = today.getMonth() - dobDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dobDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+// Professional Tax: Rs. 200/month, waived (0) when the standard monthly gross is under
+// Rs. 25,000 OR the employee is over 60 - recomputed fresh at payroll time rather than trusted
+// from whatever's stored on Employee Salary Master, since age crosses the 60 threshold silently
+// over time without that record ever being re-saved.
+function computeProfessionalTax(standardMonthlyGross, dob) {
+  if ((Number(standardMonthlyGross) || 0) < 25000) return 0;
+  const age = calculateAge(dob);
+  if (age != null && age > 60) return 0;
+  return 200;
+}
+
+// ESI (Employee): 0.75% of the standard monthly gross when it's under Rs. 21,000, else 0 -
+// same "recompute fresh, never trust the stored value" treatment as computeProfessionalTax.
+function computeEmployeeESI(standardMonthlyGross) {
+  const gross = Number(standardMonthlyGross) || 0;
+  return gross < 21000 ? round2(gross * 0.0075) : 0;
 }
 
 exports.previewBulkPayroll = async function (payment_month, payment_year) {
   try {
     const query = `
       SELECT usd.id AS salary_detail_id, usd.user_id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+      um.dob,
       dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance,
       usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.pf_employee,
       usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.other_deduction, usd.pf_employer, usd.net_salary,
@@ -256,7 +477,24 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
           WHEN sp.id IS NOT NULL THEN TRUE
           ELSE FALSE
         END AS already_processed,
-        sp.id AS existing_payment_id
+        sp.id AS existing_payment_id, eid.amount AS incentive_amount,
+        -- Aggregated (not a plain JOIN) so an employee with more than one increment scheduled
+        -- into this same disbursement month still returns exactly one row here, combining every
+        -- pending increment's arrears into a single total instead of duplicating the employee.
+        COALESCE((
+          SELECT SUM(sih.total_arrear_amount)
+          FROM salary_increment_history sih
+          WHERE sih.user_id = um.id AND sih.disbursement_month = :payment_month
+            AND sih.disbursement_year = :payment_year AND sih.status = 1
+            AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
+        ), 0) AS arrears_amount,
+        (
+          SELECT COALESCE(array_agg(sih.id), ARRAY[]::bigint[])
+          FROM salary_increment_history sih
+          WHERE sih.user_id = um.id AND sih.disbursement_month = :payment_month
+            AND sih.disbursement_year = :payment_year AND sih.status = 1
+            AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
+        ) AS increment_ids
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
       LEFT JOIN department_master dm ON dm.id = um.department_id
@@ -264,6 +502,7 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       LEFT JOIN salary_payments sp ON sp.salary_detail_id = usd.id
       AND sp.payment_month = :payment_month AND sp.payment_year = :payment_year
       AND sp.status = 1
+      LEFT JOIN employee_incentive_details eid ON eid.employee_id = um.id and eid.disbursed_month_id = :payment_month and eid.status = 1
       WHERE usd.status = 1 AND um.status = TRUE
       ORDER BY dm.name, emp_name`;
     const [employees, monthInfo] = await Promise.all([
@@ -277,19 +516,44 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       : {};
 
     const employeesWithAttendance = employees.map(emp => {
+      // Recompute Professional Tax fresh (gross threshold + age>60 waiver) against the
+      // standard, unprorated monthly gross - corrected in place before anything downstream
+      // (including the `master` snapshot below) reads total_deductions/professional_tax, so
+      // every consumer of this row - preview totals, the frontend's own recalculation on
+      // attendance/income-tax edits, and processBulkPayroll - inherits the corrected baseline.
+      const basePT = Number(emp.professional_tax) || 0;
+      const ptOverride = computeProfessionalTax(emp.gross_salary, emp.dob);
+      if (ptOverride !== basePT) {
+        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - basePT + ptOverride);
+        emp.professional_tax = ptOverride;
+      }
+      // Same fresh-recompute treatment for ESI (Employee) - 0.75% of standard gross under
+      // Rs. 21,000, else 0.
+      const baseESI = Number(emp.employee_state_insurance) || 0;
+      const esiOverride = computeEmployeeESI(emp.gross_salary);
+      if (esiOverride !== baseESI) {
+        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - baseESI + esiOverride);
+        emp.employee_state_insurance = esiOverride;
+      }
+
       const leave = emp.user_id ? leaveMap[emp.user_id] : null;
       const att = computeAttendance(monthInfo.working_days, leave, 0);
       const ratio = clampRatio(att.paid_days, monthInfo.working_days);
-      const { fields, gross_salary } = prorateEarnings(emp, ratio);
+      const { fields, gross_salary } = prorateEarnings(emp, ratio, emp.incentive_amount);
       // Active, unsettled loan/advance requests add their monthly installment on
       // top of whatever's manually entered in Employee Salary Master.
       const total_deductions = (Number(emp.total_deductions) || 0) + (Number(emp.monthly_deduction_amount) || 0);
+      // A scheduled increment arrears lump sum (salary_increment_history.total_arrear_amount)
+      // is paid in full, unprorated, on top of net salary - not part of gross_salary since
+      // it's its own labeled payslip line rather than a recurring earning.
+      const arrears_amount = round2(emp.arrears_amount);
       return {
         ...emp,
         ...fields,
         gross_salary,
         total_deductions,
-        net_salary:             round2(gross_salary - total_deductions),
+        arrears_amount,
+        net_salary:             round2(gross_salary - total_deductions + arrears_amount),
         master:                 { ...emp },
         working_days:          monthInfo.working_days,
         present_days:          att.present_days,
@@ -361,18 +625,42 @@ exports.processBulkPayroll = async function (body) {
                   usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.total_deductions,
                   usd.pf_employee, usd.professional_tax, usd.income_tax, usd.employee_state_insurance,
                   usd.loan_deduction, usd.other_deduction, usd.pf_employer, usd.esi_employer, usd.gratuity,
+                  um.dob,
                   COALESCE((
                     SELECT SUM(lar.monthly_deduction_amount)
                     FROM loan_advance_request lar
                     WHERE lar.employee_id = usd.user_id AND lar.status = 1 AND (lar.amount - lar.total_paid) > 0
-                  ), 0) AS monthly_deduction_amount
-           FROM users_salary_details usd WHERE usd.id IN (:ids)`,
-          { replacements: { ids: salaryDetailIds }, type: QueryTypes.SELECT, transaction: t }
+                  ), 0) AS monthly_deduction_amount,
+                  eid.amount AS incentive_amount,
+                  -- Aggregated (not a plain JOIN) so an employee with more than one increment
+                  -- scheduled into this same disbursement month is still one row here, combining
+                  -- every pending increment's arrears instead of duplicating this master row.
+                  COALESCE((
+                    SELECT SUM(sih.total_arrear_amount)
+                    FROM salary_increment_history sih
+                    WHERE sih.user_id = usd.user_id AND sih.disbursement_month = :payment_month
+                      AND sih.disbursement_year = :payment_year AND sih.status = 1
+                      AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
+                  ), 0) AS arrears_amount,
+                  (
+                    SELECT COALESCE(array_agg(sih.id), ARRAY[]::bigint[])
+                    FROM salary_increment_history sih
+                    WHERE sih.user_id = usd.user_id AND sih.disbursement_month = :payment_month
+                      AND sih.disbursement_year = :payment_year AND sih.status = 1
+                      AND sih.is_reverted = FALSE AND sih.arrear_paid_status = 0
+                  ) AS increment_ids
+           FROM users_salary_details usd
+           LEFT JOIN users_master um ON um.id = usd.user_id
+           LEFT JOIN employee_incentive_details eid ON eid.employee_id = usd.user_id
+             AND eid.disbursed_month_id = :payment_month AND eid.status = 1
+           WHERE usd.id IN (:ids)`,
+          { replacements: { ids: salaryDetailIds, payment_month, payment_year }, type: QueryTypes.SELECT, transaction: t }
         )
       : [];
     const masterMap = {};
     masterRows.forEach(m => { masterMap[m.id] = m; });
 
+    const allConsumedIncrementIds = [];
     const records = employees.map(emp => {
       const master = masterMap[emp.salary_detail_id];
 
@@ -382,20 +670,51 @@ exports.processBulkPayroll = async function (body) {
       const ratio = clampRatio(paidDays, calculatedWorkingDays);
 
       let earningFields, deductionFields, gross_salary, total_deductions, net_salary;
+      let arrears_amount = 0, increment_id = null, rowIncrementIds = [];
+      // Labour Welfare Fund - entered manually by HR in the bulk preview (commonly only for the
+      // December run, but not restricted here since state-wise LWF cycles vary); trusted as-is
+      // from the client the same way income_tax already is, since there's no master value to
+      // recompute it against.
+      const lwfAmount = round2(emp.lwf_amount);
       if (master) {
-        const prorated = prorateEarnings(master, ratio);
+        const prorated = prorateEarnings(master, ratio, master.incentive_amount);
         earningFields = prorated.fields;
         gross_salary  = prorated.gross_salary;
         // Active, unsettled loan/advance requests add their monthly installment on
         // top of whatever's manually entered in Employee Salary Master.
         const activeLoanDeduction = Number(master.monthly_deduction_amount) || 0;
-        total_deductions = (Number(master.total_deductions) || 0) + activeLoanDeduction;
-        net_salary    = round2(gross_salary - total_deductions);
+        // Income Tax (TDS) is editable per row in the bulk preview for this run only - swap the
+        // master's baked-in income_tax for whatever the client sent, same math as the frontend's
+        // computeRowTotalDeductions, so the two never disagree.
+        const baseIncomeTax = Number(master.income_tax) || 0;
+        const incomeTaxOverride = emp.income_tax != null ? (Number(emp.income_tax) || 0) : baseIncomeTax;
+        // Professional Tax is never trusted from Employee Salary Master either - recomputed
+        // fresh against the standard (unprorated) monthly gross + current age, since age
+        // crosses the 60 waiver threshold silently over time without that record being re-saved.
+        const standardGross = EARNING_KEYS.reduce((sum, k) => sum + (Number(master[k]) || 0), 0);
+        const basePT = Number(master.professional_tax) || 0;
+        const ptOverride = computeProfessionalTax(standardGross, master.dob);
+        // Same fresh-recompute treatment for ESI (Employee).
+        const baseESI = Number(master.employee_state_insurance) || 0;
+        const esiOverride = computeEmployeeESI(standardGross);
+        total_deductions = (Number(master.total_deductions) || 0) - baseIncomeTax + incomeTaxOverride
+          - basePT + ptOverride - baseESI + esiOverride + activeLoanDeduction + lwfAmount;
+        // A scheduled increment arrears lump sum is paid in full, unprorated, on top of
+        // net salary - its own labeled payslip line, not part of gross_salary. There can be
+        // more than one increment pending for the same disbursement month (see arrears_amount's
+        // SUM above) - salary_payments.increment_id is a single FK, so it's only populated
+        // when there's exactly one contributing increment; every id still gets its
+        // arrear_paid_status flipped below regardless of how many there are.
+        arrears_amount = round2(master.arrears_amount);
+        rowIncrementIds = Array.isArray(master.increment_ids) ? master.increment_ids.filter(Boolean) : [];
+        increment_id   = rowIncrementIds.length === 1 ? rowIncrementIds[0] : null;
+        allConsumedIncrementIds.push(...rowIncrementIds);
+        net_salary    = round2(gross_salary - total_deductions + arrears_amount);
         deductionFields = {
           pf_employee:              Number(master.pf_employee)              || 0,
-          professional_tax:         Number(master.professional_tax)         || 0,
-          income_tax:               Number(master.income_tax)               || 0,
-          employee_state_insurance: Number(master.employee_state_insurance) || 0,
+          professional_tax:         ptOverride,
+          income_tax:               incomeTaxOverride,
+          employee_state_insurance: esiOverride,
           loan_deduction:           (Number(master.loan_deduction) || 0) + activeLoanDeduction,
           other_deduction:          Number(master.other_deduction)          || 0,
           pf_employer:              Number(master.pf_employer)              || 0,
@@ -433,6 +752,9 @@ exports.processBulkPayroll = async function (body) {
         gross_salary,
         total_deductions,
         net_salary,
+        arrears_amount,
+        increment_id,
+        lwf_amount:               lwfAmount,
         working_days:             calculatedWorkingDays,
         present_days:             presentDays,
         paid_days:                paidDays,
@@ -445,6 +767,18 @@ exports.processBulkPayroll = async function (body) {
     });
 
     await salaryPayment.bulkCreate(records, { transaction: t });
+
+    // Arrears just paid out in this run must never be picked up by a future run. Built from
+    // every contributing increment id per row (allConsumedIncrementIds), not just each record's
+    // single increment_id FK - a row can have more than one increment pending for the same
+    // disbursement month, and every one of them still needs to be marked paid here.
+    if (allConsumedIncrementIds.length) {
+      await sequelize.query(
+        `UPDATE salary_increment_history SET arrear_paid_status = 1 WHERE id IN (:ids)`,
+        { replacements: { ids: allConsumedIncrementIds }, transaction: t }
+      );
+    }
+
     await t.commit();
 
     responseCodes.SUCCESS.data = { processed: records.length };
@@ -484,11 +818,18 @@ exports.generateSlip = async function (id) {
              rolm.state        AS regd_office_state,
              rolm.pincode      AS regd_office_pincode,
              rolm.phone        AS regd_office_phone,
-             rolm.email        AS regd_office_email
+             rolm.email        AS regd_office_email,
+             sih.arrear_months AS arrear_months,
+             sih.da_arrear_months AS da_arrear_months,
+             sih.standard_lop_days AS standard_lop_days,
+             sih.da_lop_days AS da_lop_days,
+             sih.old_salary_snapshot AS old_salary_snapshot,
+             sih.new_salary_snapshot AS new_salary_snapshot
       FROM salary_payments sp
       LEFT JOIN users_master           um    ON um.id    = sp.user_id
       LEFT JOIN department_master      dm    ON dm.id    = um.department_id
       LEFT JOIN designation_master     dm2   ON dm2.id   = um.designation_id
+      LEFT JOIN salary_increment_history sih ON sih.id   = sp.increment_id
       LEFT JOIN client_branding_master cbm   ON cbm.id   = 1
       LEFT JOIN office_location_master olm   ON olm.id   = 1
       LEFT JOIN city_master            city  ON city.id  = olm.city_id
@@ -559,7 +900,6 @@ exports.generateSlip = async function (id) {
       ? `Regd. Office: ${sp.regd_office_address}` + (regdCityStatePin ? `, ${regdCityStatePin}` : "")
       : "";
     const regdContactLine = [
-      sp.regd_office_phone ? `Phone: ${sp.regd_office_phone}` : null,
       sp.regd_office_email ? `Email: ${sp.regd_office_email}` : null,
     ].filter(Boolean).join("   |   ");
 
@@ -602,15 +942,32 @@ exports.generateSlip = async function (id) {
       employee_state_insurance_fmt: fmt(sp.employee_state_insurance),
       loan_deduction_fmt: fmt(sp.loan_deduction),
       other_deduction_fmt: fmt(sp.other_deduction),
+      lwf_amount_fmt: fmt(sp.lwf_amount),
       gross_salary_fmt: fmt(sp.gross_salary),
       total_deductions_fmt: fmt(sp.total_deductions),
+      arrears_amount_fmt: fmt(sp.arrears_amount),
       net_salary_fmt: fmt(sp.net_salary),
       regd_office_line: regdOfficeLine,
       regd_contact_line: regdContactLine,
       remarks_line: sp.remarks ? `Remarks: ${sp.remarks}` : "",
     };
 
-    const mergedHtml = mergeTemplate(template.html_content, mergeData);
+    // Arrears only show up if the active template happens to reference {{arrears_amount_fmt}} -
+    // templates are user-authored HTML with no such placeholder baked in today, so this note is
+    // spliced directly into the raw template instead (before merging), guaranteeing it's visible
+    // on every template whenever a payment actually carries arrears (arrears_amount > 0). It's
+    // inserted right before the {{regd_office_line}}/{{regd_contact_line}} footer tags - wherever
+    // the template places the Regd. Office address/phone/email - so arrears always read above
+    // that footer instead of trailing after it at the very end of the document.
+    let htmlWithArrears = insertArrearsBeforeRegdFooter(template.html_content, sp, fmt, monthLabel);
+    // These rows are dropped entirely (not just printed as "Rs. 0.00") whenever nothing was
+    // actually earned/deducted this payment - LWF only applies to the December run, and the rest
+    // commonly land at 0 for plenty of employees (e.g. no active loan, PT/ESI waived by age or
+    // gross, no City Allowance/Conveyance configured).
+    ZERO_HIDE_MERGE_TAGS.forEach(({ tag, field }) => {
+      htmlWithArrears = stripRowIfZero(htmlWithArrears, tag, sp[field]);
+    });
+    const mergedHtml = mergeTemplate(htmlWithArrears, mergeData);
     await renderHtmlToPdfFile(mergedHtml, filePath);
 
     await salaryPayment.update({ slip_url: slipUrl, pdf_template_id: template.id }, { where: { id }, transaction: t });
@@ -620,7 +977,6 @@ exports.generateSlip = async function (id) {
     responseCodes.SUCCESS.message = "Salary slip generated successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e)
     await t.rollback();
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to generate salary slip";
@@ -628,7 +984,12 @@ exports.generateSlip = async function (id) {
   }
 };
 
-exports.emailSlip = async function (id, toEmail) {
+exports.emailSlip = async function (id, toEmail, sentBy, force) {
+  const t0 = Date.now();
+  const timings = {};
+  const mark = (label, from) => { timings[label] = Date.now() - from; };
+  let claimed = false;
+  let sp, recipient, subject;
   try {
     // Fetch salary record
     const query = `
@@ -640,25 +1001,47 @@ exports.emailSlip = async function (id, toEmail) {
       LEFT JOIN users_master um ON um.id = sp.user_id
       WHERE sp.id = :id AND sp.status = 1
       LIMIT 1`;
+    let tStep = Date.now();
     const rows = await sequelize.query(query, { replacements: { id }, type: QueryTypes.SELECT });
+    mark('fetchQuery', tStep);
     if (!rows.length) {
       responseCodes.NOT_FOUND.data = null;
       responseCodes.NOT_FOUND.message = "Salary payment record not found";
       return responseCodes.NOT_FOUND;
     }
-    const sp = rows[0];
+    sp = rows[0];
 
     // Resolve email — support array (multi-select) or single string, then fall back to employee record
     const resolved = Array.isArray(toEmail) ? toEmail.join(', ') : (toEmail || sp.emp_email);
-    const recipient = resolved;
-    console.log("Resolved recipient email:", recipient);
+    recipient = resolved;
     if (!recipient) {
       responseCodes.BAD_REQUEST.data = null;
       responseCodes.BAD_REQUEST.message = "No email address found for this employee";
       return responseCodes.BAD_REQUEST;
     }
 
+    // Atomically claim this row before sending anything. sendMail can take 8-17s (Gmail SMTP) -
+    // if we only set mail_status after sending, a second overlapping request for the same row
+    // (double-click, overlapping bulk batches) reads mail_status=0 during that whole window and
+    // sends a duplicate. The conditional WHERE makes the flip 0->1 atomic at the DB level, so
+    // only one concurrent caller can ever win it; everyone else sees claimedCount === 0 and bails.
+    // `force` lets HR deliberately resend a slip that's already gone out (single-row action only -
+    // bulkEmailSlips never sets it, since it already pre-filters out mail_status===1 rows).
+    tStep = Date.now();
+    const [claimedCount] = await salaryPayment.update(
+      { mail_status: 1, mail_sent_date: new Date() },
+      { where: force ? { id } : { id, mail_status: { [Op.ne]: 1 } } }
+    );
+    mark('claim', tStep);
+    if (claimedCount === 0) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "Salary slip email has already been sent (or is currently being sent) for this record";
+      return responseCodes.BAD_REQUEST;
+    }
+    claimed = true;
+
     // Generate slip if not already done
+    tStep = Date.now();
     if (!sp.slip_url) {
       const generated = await exports.generateSlip(id);
       if (generated.code !== "100") return generated;
@@ -671,23 +1054,76 @@ exports.emailSlip = async function (id, toEmail) {
       if (generated.code !== "100") return generated;
       sp.slip_url = generated.data.slip_url;
     }
+    mark('generateSlip', tStep);
 
     const monthLabel = (sp.month_name || "").trim();
-    const subject = `Salary Slip — ${monthLabel} ${sp.payment_year}`;
+    subject = `Salary Slip — ${monthLabel} ${sp.payment_year}`;
     const html = `
-      <p>Dear ${sp.emp_name},</p>
-      <p>Please find attached your salary slip for <strong>${monthLabel} ${sp.payment_year}</strong>.</p>
-      <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;">
-        <tr><td style="color:#555;">Gross Salary</td><td><strong>₹ ${parseFloat(sp.gross_salary).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></td></tr>
-        <tr><td style="color:#555;">Total Deductions</td><td><strong>₹ ${parseFloat(sp.total_deductions).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></td></tr>
-        <tr style="background:#f0f8f0;"><td style="color:#1a7a4c;font-weight:bold;">Net Salary</td><td style="color:#1a7a4c;font-weight:bold;">₹ ${parseFloat(sp.net_salary).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td></tr>
-      </table>
-      <br/>
-      <p style="color:#999;font-size:11px;">This is a system-generated email. Please do not reply.</p>
-    `;
+        <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="UTF-8">
+            </head>
+            <body style="margin:0;padding:0;background-color:#f4f6f9;font-family:Arial,Helvetica,sans-serif;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:40px 0;">
+                <tr>
+                  <td align="center">
+                    <table width="650" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e5e5;">
+                  <!-- Header -->
+                      <tr>
+                        <td align="center" style="background:#0d6efd;padding:30px;">
+                            <h2 style="margin:0;color:#ffffff;font-size:28px;">
+                                Advance Cable Technologies Ltd.
+                            </h2>
+                            <p style="margin:8px 0 0;color:#eaf2ff;font-size:16px;">
+                                Salary Slip
+                            </p>
+                        </td>
+                      </tr>
+                      <!-- Body -->
+                      <tr>
+                          <td style="padding:40px;">
+                              <p style="font-size:16px;color:#333;margin-top:0;">Dear <strong>${sp.emp_name}</strong>,</p>
+                              <p style="font-size:15px;color:#555;line-height:26px;">We hope you are doing well. </p>
+                              <p style="font-size:15px;color:#555;line-height:26px;">Please find attached your <strong>Salary Slip</strong> for the month of <strong>${monthLabel} ${sp.payment_year}</strong>.</p>
+                              <p style="font-size:15px;color:#555;line-height:26px;">Kindly keep this document for your records. If you have any questions or require any clarification regarding your salary slip, please contact the HR or Payroll Department.</p>
+                              <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                                  <tr>
+                                      <td align="center">
+                                          <div style="display:inline-block;background:#e8f4ff;border:1px solid #cfe2ff;padding:18px 25px;border-radius:8px;color:#0d6efd;font-size:15px;">
+                                              📎 <strong>Your Salary Slip PDF is attached with this email.</strong>
+                                          </div>
+                                      </td>
+                                  </tr>
+                              </table>
+                              <p style="font-size:15px;color:#555;line-height:26px;">Thank you for your continued dedication, hard work, and valuable contribution to the organization.</p>
+                              <br>
+                              <p style="margin:0;font-size:15px;color:#333;">Best Regards,</p>
+                              <p style="margin-top:8px;font-size:15px;color:#333;">
+                                  <strong>HR Department</strong><br>Advance Cable Technologies Ltd.
+                              </p>
+                          </td>
+                      </tr>
+            <!-- Footer -->
+                      <tr>
+                          <td align="center" style="background:#f8f9fa;padding:25px;font-size:12px;color:#777;line-height:20px;">
+                              This is an automatically generated email. Please do not reply to this email.<br>
+                              For any queries, please contact the HR Department.<br><br>
 
+                              © ${new Date().getFullYear()} Advance Cable Technologies Ltd. All Rights Reserved.
+                          </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </body>
+          </html>`;
+
+    tStep = Date.now();
     await transporter.sendMail({
-      from: process.env.EXP_HANDLE_USER_NAME || "no-reply@seeku.in",
+      from: process.env.EXP_HANDLE_USER_NAME || 'Advance Cable Technologies <tech@advancecable.in>',
+      // to: 'tech@advancecable.in',
       to: recipient,
       subject,
       html,
@@ -698,39 +1134,97 @@ exports.emailSlip = async function (id, toEmail) {
         },
       ],
     });
+    mark('sendMail', tStep);
 
+    tStep = Date.now();
+    await salarySlipMailLog.create({
+      salary_payment_id: id,
+      user_id: sp.user_id,
+      recipient_email: recipient,
+      subject,
+      payment_month: sp.payment_month,
+      payment_year: sp.payment_year,
+      slip_url: sp.slip_url,
+      status: 1,
+      sent_by: sentBy || null,
+      sent_date: new Date(),
+    });
+    mark('dbWrite', tStep);
+
+    logger.info({ message: `emailSlip timing for id ${id}`, totalMs: Date.now() - t0, ...timings });
     responseCodes.SUCCESS.data = { sent_to: recipient };
     responseCodes.SUCCESS.message = `Salary slip sent to ${recipient}`;
     return responseCodes.SUCCESS;
   } catch (e) {
+    // We claimed the row before sending - if the actual send failed, release the claim so
+    // this row can be retried instead of being stuck showing "sent" when it wasn't, and record
+    // the failed attempt for visibility in the mail log.
+    if (claimed) {
+      try {
+        await salaryPayment.update({ mail_status: 0, mail_sent_date: null }, { where: { id } });
+        await salarySlipMailLog.create({
+          salary_payment_id: id,
+          user_id: sp?.user_id,
+          recipient_email: recipient || '',
+          subject: subject || null,
+          payment_month: sp?.payment_month,
+          payment_year: sp?.payment_year,
+          slip_url: sp?.slip_url || null,
+          status: 0,
+          sent_by: sentBy || null,
+          sent_date: new Date(),
+        });
+      } catch (revertErr) {
+        logger.error({ message: `emailSlip: failed to release claim for id ${id}`, error: revertErr.message });
+      }
+    }
+    logger.error({ message: `emailSlip timing for id ${id} (failed)`, totalMs: Date.now() - t0, ...timings, error: e.message });
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to send salary slip email";
     return responseCodes.BAD_REQUEST;
   }
 };
 
-exports.bulkEmailSlips = async function (ids) {
+// How many slip emails to send concurrently. The SMTP transporter (Gmail) is pooled to
+// this same size (see mailTransporterService.js) - keep the two in sync so sends actually
+// overlap on the wire instead of queuing behind a smaller connection pool.
+const BULK_EMAIL_CONCURRENCY = 5;
+
+exports.bulkEmailSlips = async function (ids, sentBy) {
+  const bulkT0 = Date.now();
+  const rows = await salaryPayment.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id', 'mail_status'] });
+  const skipped = rows.filter(r => r.mail_status === 1).map(r => r.id);
+  const toSend = rows.filter(r => r.mail_status !== 1).map(r => r.id);
+
   const sent = [], failed = [];
-  for (const id of ids) {
-    try {
-      const res = await exports.emailSlip(id, null);
-      if (res.code === '100') {
-        sent.push(id);
-      } else {
-        failed.push({ id, reason: res.message });
+  let batchNum = 0;
+  for (let i = 0; i < toSend.length; i += BULK_EMAIL_CONCURRENCY) {
+    batchNum++;
+    const batchT0 = Date.now();
+    const batch = toSend.slice(i, i + BULK_EMAIL_CONCURRENCY);
+    const results = await Promise.all(batch.map(async (id) => {
+      try {
+        const res = await exports.emailSlip(id, null, sentBy);
+        return res.code === '100' ? { id, ok: true } : { id, ok: false, reason: res.message };
+      } catch (e) {
+        return { id, ok: false, reason: e.message };
       }
-    } catch (e) {
-      failed.push({ id, reason: e.message });
+    }));
+    for (const r of results) {
+      if (r.ok) sent.push(r.id);
+      else failed.push({ id: r.id, reason: r.reason });
     }
+    logger.info({ message: `bulkEmailSlips batch ${batchNum} timing`, batchSize: batch.length, batchMs: Date.now() - batchT0 });
   }
-  const data = { sent, failed };
-  if (sent.length === 0) {
+  logger.info({ message: 'bulkEmailSlips total timing', requested: ids.length, toSend: toSend.length, skipped: skipped.length, totalMs: Date.now() - bulkT0 });
+  const data = { sent, failed, skipped };
+  if (sent.length === 0 && toSend.length > 0) {
     responseCodes.BAD_REQUEST.data = data;
-    responseCodes.BAD_REQUEST.message = `Failed to send all ${ids.length} slip(s)`;
+    responseCodes.BAD_REQUEST.message = `Failed to send all ${toSend.length} slip(s)`;
     return responseCodes.BAD_REQUEST;
   }
   responseCodes.SUCCESS.data = data;
-  responseCodes.SUCCESS.message = `Sent ${sent.length} slip(s) successfully${failed.length ? `, ${failed.length} failed` : ''}`;
+  responseCodes.SUCCESS.message = `Sent ${sent.length} slip(s) successfully${failed.length ? `, ${failed.length} failed` : ''}${skipped.length ? `, ${skipped.length} already sent (skipped)` : ''}`;
   return responseCodes.SUCCESS;
 };
 
@@ -776,7 +1270,7 @@ exports.getDataPaymentCompleted = async function (user_id) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e)
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Distinct Months & Years";
     return responseCodes.BAD_REQUEST;

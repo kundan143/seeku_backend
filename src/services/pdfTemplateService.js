@@ -102,21 +102,35 @@ async function withSandboxedPage(fn) {
   }
 }
 
-async function renderHtmlToPdfBuffer(html) {
+const DEFAULT_PDF_OPTIONS = {
+  format: "A4",
+  printBackground: true,
+  margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
+};
+
+// headerTemplate/footerTemplate (when passed in pdfOptions) make Chromium repeat that
+// markup on every printed page - unlike a <header>/<footer> in the page's own HTML,
+// which only appears once (top of page 1 / bottom of the last page) since it's just
+// regular flowed content. Per Puppeteer's contract these render in an isolated context:
+// only inline styles are reliable (no access to the main document's <style>/CSS
+// variables), images must be data URIs (no network, matches getLogoDataUri's output),
+// and `displayHeaderFooter: true` plus a large-enough margin.top/bottom (to fit the
+// header/footer content without overlapping the body) are required for them to show.
+async function renderHtmlToPdfBuffer(html, pdfOptions) {
   return withSandboxedPage(async (page) => {
     await page.setContent(html, { waitUntil: "domcontentloaded" });
     // Puppeteer's page.pdf() returns a Uint8Array (not a Node Buffer) — wrap it
     // so downstream .toString("base64") actually base64-encodes the bytes
     // instead of joining raw byte values with commas.
-    const pdfBytes = await page.pdf({ format: "A4", printBackground: true, margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" } });
+    const pdfBytes = await page.pdf({ ...DEFAULT_PDF_OPTIONS, ...pdfOptions });
     return Buffer.from(pdfBytes);
   });
 }
 
-async function renderHtmlToPdfFile(html, filePath) {
+async function renderHtmlToPdfFile(html, filePath, pdfOptions) {
   await withSandboxedPage(async (page) => {
     await page.setContent(html, { waitUntil: "domcontentloaded" });
-    await page.pdf({ path: filePath, format: "A4", printBackground: true, margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" } });
+    await page.pdf({ ...DEFAULT_PDF_OPTIONS, ...pdfOptions, path: filePath });
   });
 }
 

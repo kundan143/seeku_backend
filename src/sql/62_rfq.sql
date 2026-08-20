@@ -37,9 +37,9 @@ COMMENT ON COLUMN rfq.insulation_material IS 'One of: PVC, XLPE, HR PVC, FR PVC,
 COMMENT ON COLUMN rfq.pd_id IS 'Populated once an AI-generated design is accepted and materialized into production_datasheet';
 COMMENT ON COLUMN rfq.status IS 'RFQ pipeline status: 1=Draft, 2=Design Generated, 3=Engineering Approved, 4=Quoted';
 
-CREATE INDEX idx_rfq_org_id ON rfq(org_id);
-CREATE INDEX idx_rfq_lead_id ON rfq(lead_id);
-CREATE INDEX idx_rfq_pd_id ON rfq(pd_id);
+CREATE INDEX IF NOT EXISTS idx_rfq_org_id ON rfq(org_id);
+CREATE INDEX IF NOT EXISTS idx_rfq_lead_id ON rfq(lead_id);
+CREATE INDEX IF NOT EXISTS idx_rfq_pd_id ON rfq(pd_id);
 
 -- Sidebar menu entry, placed as a sibling of the existing "Production Datasheet" page
 -- (inherits the same parent menu and rank bucket so it shows up in the Design & Costing group).

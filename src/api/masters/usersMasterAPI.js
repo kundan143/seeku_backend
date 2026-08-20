@@ -23,13 +23,13 @@ router.post('/bulkImport', async (req, res, next) => {
 
 // 3 = Update Row
 router.post('/updateRow', async (req, res, next) => {
-	return res.send(await OP_UsersMaster.updateData(req.body));
+	return res.send(await OP_UsersMaster.updateData(req.body, req.headers.userId));
 });
 
 // Assign Role — sets the user's role_id and resets their permissions to
 // that role's template
 router.post('/assignRole', async (req, res, next) => {
-	return res.send(await OP_UsersMaster.assignRole(req.body));
+	return res.send(await OP_UsersMaster.assignRole(req.body, req.headers.userId));
 });
 
 // 4 = Delete Row

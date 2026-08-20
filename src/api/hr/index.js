@@ -13,6 +13,7 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_hr + '/employeeBankDetails', jwt, apiActivityLogger, require('../hr/employeeBankDetailsAPI'));
     app.use(ROOT_BASE_URL_hr + '/employeeSalaryDetails', jwt, apiActivityLogger, require('../hr/usersSalaryDetailsAPI'));
     app.use(ROOT_BASE_URL_hr + '/salaryPayment', jwt, apiActivityLogger, require('../hr/salaryPaymentAPI'));
+    app.use(ROOT_BASE_URL_hr + '/salarySlipMailLog', jwt, apiActivityLogger, require('../hr/salarySlipMailLogAPI'));
     app.use(ROOT_BASE_URL_hr + '/userDocumentMaster', jwt, apiActivityLogger, require('../hr/userDocumentMasterAPI'));
     app.use(ROOT_BASE_URL_hr + '/candidates', jwt, apiActivityLogger, require('../hr/candidatesAPI'));
     app.use(ROOT_BASE_URL_hr + '/employeeAssets', jwt, apiActivityLogger, require('../hr/employeeAssetsAPI'));
@@ -22,5 +23,7 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_hr + '/hrPolicy', jwt, apiActivityLogger, require('../hr/hrPolicyAPI'));
     app.use(ROOT_BASE_URL_hr + '/medicalInsurance', jwt, apiActivityLogger, require('../hr/medicalInsuranceAPI'));
     app.use(ROOT_BASE_URL_hr + '/incentiveMaster', jwt, apiActivityLogger, require('../hr/incentiveMasterAPI'));
+    app.use(ROOT_BASE_URL_hr + '/salaryIncrementHistory', jwt, apiActivityLogger, require('../hr/salaryIncrementHistoryAPI'));
+    app.use(ROOT_BASE_URL_hr + '/employeeIncentiveDetails', jwt, apiActivityLogger, require('../hr/employeeIncentiveDetailsAPI'));
     app.use(ROOT_BASE_URL_hr + '/socialPosts', jwt, apiActivityLogger, require('../hr/socialPostsAPI'));
 };

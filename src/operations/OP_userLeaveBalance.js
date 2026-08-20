@@ -69,7 +69,7 @@ exports.getAllData = async function (body) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -94,7 +94,7 @@ exports.getOneData = async function (id) {
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    console.log(e);
+    
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
@@ -108,7 +108,6 @@ exports.getTotalRemainingLeave = async function (id) {
         year: new Date().getFullYear(),
       },
     });
-    console.log("totalRemainingLeave",totalRemainingLeave)
     responseCodes.SUCCESS.data = totalRemainingLeave;
 		responseCodes.SUCCESS.message = "";
 		return responseCodes.SUCCESS;

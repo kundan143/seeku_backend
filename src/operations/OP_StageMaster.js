@@ -3,13 +3,11 @@ const { responseCodes } = require("../services/baseReponse");
 
 exports.addData = async function (body) {
 	try {
-		console.log("addData body:", body);
 		var result = await stageMaster.create(body.data);
 		responseCodes.SUCCESS.data = result.id;
 		responseCodes.SUCCESS.message = "Row Added Successfully";
 		return responseCodes.SUCCESS;
 	} catch (e) {
-		console.log("Error in addData:", e);
 		responseCodes.BAD_REQUEST.data = e;
 		responseCodes.BAD_REQUEST.message = "Failed to Add Row";
 		return responseCodes.BAD_REQUEST;

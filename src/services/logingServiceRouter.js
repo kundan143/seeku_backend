@@ -11,7 +11,7 @@ const { responseCodes } = require("./baseReponse");
 const { sequelize } = require("../config/database-connection");
 const sendOtpMail = require("./sendOtpMail");
 const sendAccountLockedMail = require("./sendAccountLockedMail");
-const { usersMaster, systemConfig } = require("../models");
+const { usersMaster, systemConfig, roleMaster } = require("../models");
 const { recordLogin } = require("../operations/OP_UserActivityLog");
 
 const SALT_ROUNDS = 12;
@@ -56,29 +56,55 @@ routers.post("/user_login", async (req, res) => {
 
           let roleId = user.role_id;
           let userId = user.id;
-          let menuPermissionSQL = `SELECT mm.*, mm.id as mm_id,
-                                        mp.id as mp_id, mp.menu_id as mp_menu_id,
-                                        mp.role_id as mp_role_id, mp.user_id as mp_user_id,
-                                        mp.add_opt, mp.edit_opt, mp.view_opt, mp.delete_opt,
-                                        mp.excel_opt, mp.pdf_opt, mp.approve_opt, mp.mailsent_opt,
-                                        mp.password_protect_opt
+          const role = roleId ? await roleMaster.findByPk(roleId) : null;
+          const isSuperAdmin = !!(role && role.is_super_admin);
+
+          let all_menu, all_links;
+          if (isSuperAdmin) {
+            // Super Admin: a normal, visible role attribute (role_master.is_super_admin, set
+            // from the Role Master screen) - not a hidden bypass. Grants full view/add/edit/
+            // delete/excel/pdf/approve/mailsent access to every row in menu_master and every
+            // link in link_master, with no menu_permission/link_permission rows required, so a
+            // menu added after this role was created is automatically included on next login.
+            const allMenuSQL = `SELECT mm.*, mm.id as mm_id,
+                                        1 as add_opt, 1 as edit_opt, 1 as view_opt, 1 as delete_opt,
+                                        1 as excel_opt, 1 as pdf_opt, 1 as approve_opt, 1 as mailsent_opt,
+                                        0 as password_protect_opt
                                         FROM menu_master AS mm
-                                        LEFT JOIN menu_permission AS mp ON mp.menu_id = mm.id
-                                        WHERE mp.role_id = :roleId AND mp.user_id = :userId
-                                        AND mp.view_opt = 1
                                         ORDER BY mm.parent_rank ASC, mm.child_rank ASC;`;
-          const result = await sequelize.query(menuPermissionSQL, {
-            type: QueryTypes.SELECT,
-            replacements: { roleId, userId },
-          });
-          let parents_arr = result.filter((o) => o.parent_id == null);
-          let menu_details = recursion(parents_arr, result);
-          let all_menu = menu_details;
-          console.log("all_menu", all_menu);
-          var get_links = await getlink(roleId, userId);
-          var all_links = JSON.stringify(get_links);
+            const allMenuResult = await sequelize.query(allMenuSQL, { type: QueryTypes.SELECT });
+            let parents_arr = allMenuResult.filter((o) => o.parent_id == null);
+            all_menu = recursion(parents_arr, allMenuResult);
+            all_links = JSON.stringify(await getAllLinks());
+          } else {
+            let menuPermissionSQL = `SELECT mm.*, mm.id as mm_id,
+                                          mp.id as mp_id, mp.menu_id as mp_menu_id,
+                                          mp.role_id as mp_role_id, mp.user_id as mp_user_id,
+                                          mp.add_opt, mp.edit_opt, mp.view_opt, mp.delete_opt,
+                                          mp.excel_opt, mp.pdf_opt, mp.approve_opt, mp.mailsent_opt,
+                                          mp.password_protect_opt
+                                          FROM menu_master AS mm
+                                          LEFT JOIN menu_permission AS mp ON mp.menu_id = mm.id
+                                          WHERE mp.role_id = :roleId AND mp.user_id = :userId
+                                          AND mp.view_opt = 1
+                                          ORDER BY mm.parent_rank ASC, mm.child_rank ASC;`;
+            const result = await sequelize.query(menuPermissionSQL, {
+              type: QueryTypes.SELECT,
+              replacements: { roleId, userId },
+            });
+            let parents_arr = result.filter((o) => o.parent_id == null);
+            all_menu = recursion(parents_arr, result);
+            var get_links = await getlink(roleId, userId);
+            all_links = JSON.stringify(get_links);
+          }
+          // Plain objects (not the raw Sequelize instances) so is_super_admin can be layered on
+          // top - the frontend uses this to decide whether the Super Admin checkbox/column on
+          // Role Master is even shown, so a non-super-admin can't see the option exists.
+          const userDetPayload = resUsersMaster.map((u) => u.get({ plain: true }));
+          userDetPayload[0].is_super_admin = isSuperAdmin;
+
           var finalData = {
-            userDet: resUsersMaster,
+            userDet: userDetPayload,
             menuDet: all_menu,
             links: all_links,
           };
@@ -102,13 +128,11 @@ routers.post("/user_login", async (req, res) => {
 
           // Lock account if attempts >= 3
           if (attempts >= 3) {
-            console.log(`Locking account for ${email} after ${attempts} failed attempts.`);
             updateData.account_block = true;
             logger.warn(`Account locked for user: ${email} after 3 failed attempts.`);
             await usersMaster.update(updateData, { where: { id: user.id } });
 
             try {
-              console.log(`Attempting to send account-locked notification for ${user.work_email || user.emp_code}`);
               await sendAccountLockedMail(user, attempts);
             } catch (e) {
               logger.error(`Failed to send account-locked notification: ${e.message}`);
@@ -348,6 +372,23 @@ async function getlink(role_id, user_id) {
     return result;
   } catch (e) {
     logger.error(`Error fetching links: ${e.message}`);
+    return [];
+  }
+}
+
+// Super Admin counterpart to getlink() - every defined link in link_master, for every menu,
+// with no link_permission row required.
+async function getAllLinks() {
+  try {
+    let sql = `select mm.id as menu_id, mm.menu_name, mm.link, lm.link_name from menu_master as mm
+        left join link_master as lm on mm.id=lm.menu_id
+        where lm.link_name IS NOT NULL`;
+    const linkResults = await sequelize.query(sql, { type: QueryTypes.SELECT });
+    return groupBy(linkResults, (item) => {
+      return [item.link];
+    });
+  } catch (e) {
+    logger.error(`Error fetching all links (super admin): ${e.message}`);
     return [];
   }
 }

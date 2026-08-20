@@ -25,11 +25,48 @@ function baseFields(data) {
   return rest;
 }
 
+// Looks up an employee's latest active monthly Basic + DA (users_salary_details,
+// salary_type = 1) - same source getAllData's computed_amount reads live. employee_id is
+// null for department/company-wide scopes, where a single employee's salary doesn't apply.
+async function resolveBasicDa(employee_id) {
+  if (!employee_id) return 0;
+  const rows = await sequelize.query(
+    `select usd.basic_salary + usd.dearness_allowance as basic_da
+     from users_salary_details usd
+     where usd.user_id = :employee_id and usd.status = 1 and usd.salary_type = 1
+     order by usd.effective_from desc nulls last, usd.id desc
+     limit 1`,
+    { replacements: { employee_id }, type: QueryTypes.SELECT }
+  );
+  return rows.length ? Number(rows[0].basic_da || 0) : 0;
+}
+
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
+// Snapshot amount stored on the row at save time: (basic + DA) * incentive_value / 100 for
+// percentage type, or incentive_value itself for flat type. Downstream consumers (e.g. the
+// monthly accrual cron) read this stored column rather than recomputing it themselves.
+async function computeIncentiveAmount(row) {
+  if (row.value_type === "percentage") {
+    const basic_da = await resolveBasicDa(row.employee_id);
+    return round2((basic_da * Number(row.incentive_value)) / 100);
+  }
+  return round2(Number(row.incentive_value));
+}
+
 exports.addData = async function (body) {
   try {
     const base = baseFields(body.data);
     const combos = buildScopeCombinations(body.data);
-    const rows = combos.map(combo => ({ ...base, ...combo }));
+    const rows = await Promise.all(
+      combos.map(async combo => {
+        const row = { ...base, ...combo };
+        row.incentive_amount = await computeIncentiveAmount(row);
+        return row;
+      })
+    );
     const result = await incentiveMaster.bulkCreate(rows);
     responseCodes.SUCCESS.data = result.map(r => r.id);
     responseCodes.SUCCESS.message = rows.length > 1 ? `${rows.length} Rows Added Successfully` : "Row Added Successfully";
@@ -46,21 +83,30 @@ exports.updateData = async function (body) {
     const base = baseFields(body.data);
     const [firstCombo, ...restCombos] = buildScopeCombinations(body.data);
 
-    await incentiveMaster.update({ ...base, ...firstCombo }, {
+    const firstRow = { ...base, ...firstCombo };
+    firstRow.incentive_amount = await computeIncentiveAmount(firstRow);
+
+    await incentiveMaster.update(firstRow, {
       where: { id: body.id },
     });
 
     // Extra selections beyond the first combination didn't exist before this edit -
     // they become new rows rather than overwriting the one row being edited.
     if (restCombos.length) {
-      const extraRows = restCombos.map(combo => ({
-        ...base,
-        ...combo,
-        created_by: base.modified_by,
-        created_date: base.modified_date,
-        modified_by: null,
-        modified_date: null,
-      }));
+      const extraRows = await Promise.all(
+        restCombos.map(async combo => {
+          const row = {
+            ...base,
+            ...combo,
+            created_by: base.modified_by,
+            created_date: base.modified_date,
+            modified_by: null,
+            modified_date: null,
+          };
+          row.incentive_amount = await computeIncentiveAmount(row);
+          return row;
+        })
+      );
       await incentiveMaster.bulkCreate(extraRows);
     }
 

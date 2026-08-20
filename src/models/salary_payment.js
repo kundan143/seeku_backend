@@ -211,6 +211,30 @@ module.exports = function (sequelize, DataTypes) {
             type: DataTypes.INTEGER,
             allowNull: true
         },
+        mail_status: {
+            type: DataTypes.SMALLINT,
+            allowNull: false,
+            defaultValue: 0
+        },
+        mail_sent_date: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        arrears_amount: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: false,
+            defaultValue: 0.00
+        },
+        increment_id: {
+            type: DataTypes.BIGINT,
+            allowNull: true,
+            references: { model: 'salary_increment_history', key: 'id' }
+        },
+        lwf_amount: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: false,
+            defaultValue: 0.00
+        },
     };
     let optional = {
         sequelize,

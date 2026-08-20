@@ -28,19 +28,22 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.NUMERIC(12, 2),
       allowNull: false,
     },
+    incentive_amount: {
+      type: DataTypes.NUMERIC(12, 2),
+      allowNull: true,
+    },
     frequency: {
       type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: "yearly",
     },
-    disbursement_month: {
+    last_accrued_year: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    is_one_time: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
+    last_accrued_period: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
     department_id: {
       type: DataTypes.INTEGER,
@@ -57,14 +60,6 @@ module.exports = function (sequelize, DataTypes) {
         model: "users_master",
         key: "id",
       },
-    },
-    effective_from: {
-      type: DataTypes.DATEONLY,
-      allowNull: false,
-    },
-    effective_to: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
     },
     description: {
       type: DataTypes.TEXT,
