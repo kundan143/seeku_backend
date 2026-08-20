@@ -540,6 +540,15 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       const att = computeAttendance(monthInfo.working_days, leave, 0);
       const ratio = clampRatio(att.paid_days, monthInfo.working_days);
       const { fields, gross_salary } = prorateEarnings(emp, ratio, emp.incentive_amount);
+      // PF (Employee) is 12% of Basic+DA actually paid this month, not the full monthly figure -
+      // LOP/attendance shortfalls that already prorated basic_salary/dearness_allowance down via
+      // prorateEarnings above must prorate PF the same way, same treatment as PT/ESI above.
+      const basePF = Number(emp.pf_employee) || 0;
+      const pfOverride = round2(((Number(fields.basic_salary) || 0) + (Number(fields.dearness_allowance) || 0)) * 0.12);
+      if (pfOverride !== basePF) {
+        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - basePF + pfOverride);
+        emp.pf_employee = pfOverride;
+      }
       // Active, unsettled loan/advance requests add their monthly installment on
       // top of whatever's manually entered in Employee Salary Master.
       const total_deductions = (Number(emp.total_deductions) || 0) + (Number(emp.monthly_deduction_amount) || 0);
@@ -697,8 +706,14 @@ exports.processBulkPayroll = async function (body) {
         // Same fresh-recompute treatment for ESI (Employee).
         const baseESI = Number(master.employee_state_insurance) || 0;
         const esiOverride = computeEmployeeESI(standardGross);
+        // PF (Employee) is 12% of Basic+DA actually paid this month, not the full monthly
+        // figure - LOP/attendance shortfalls already prorated basic_salary/dearness_allowance
+        // down via prorateEarnings above, so PF has to follow the same ratio instead of staying
+        // pinned to the master's full-month value.
+        const basePF = Number(master.pf_employee) || 0;
+        const pfOverride = round2(((Number(earningFields.basic_salary) || 0) + (Number(earningFields.dearness_allowance) || 0)) * 0.12);
         total_deductions = (Number(master.total_deductions) || 0) - baseIncomeTax + incomeTaxOverride
-          - basePT + ptOverride - baseESI + esiOverride + activeLoanDeduction + lwfAmount;
+          - basePT + ptOverride - baseESI + esiOverride - basePF + pfOverride + activeLoanDeduction + lwfAmount;
         // A scheduled increment arrears lump sum is paid in full, unprorated, on top of
         // net salary - its own labeled payslip line, not part of gross_salary. There can be
         // more than one increment pending for the same disbursement month (see arrears_amount's
@@ -711,7 +726,7 @@ exports.processBulkPayroll = async function (body) {
         allConsumedIncrementIds.push(...rowIncrementIds);
         net_salary    = round2(gross_salary - total_deductions + arrears_amount);
         deductionFields = {
-          pf_employee:              Number(master.pf_employee)              || 0,
+          pf_employee:              pfOverride,
           professional_tax:         ptOverride,
           income_tax:               incomeTaxOverride,
           employee_state_insurance: esiOverride,
