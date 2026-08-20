@@ -160,7 +160,7 @@ exports.deleteData = async function (body) {
 exports.getAllData = async function (body) {
   try {
     let query = {};
-    let bodyStatus = body.status ? `uld.status = ${body.status} and` : "";
+    let bodyStatus = (body && body.status !== undefined && body.status !== null) ? `uld.status = ${Number(body.status)} and` : "";
     query = `SELECT uld.*, ltm.leave_name, CONCAT(emp.first_name, ' ', emp.last_name) as employee_name,
                     CASE
                         WHEN uld.status = 0 THEN 'Pending'
