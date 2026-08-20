@@ -35,11 +35,19 @@ function getMigrationNumber(fileName) {
 }
 
 async function runMigrations() {
-  const pending = await umzug.pending();
-  if (!pending.length) {
+  const pendingRaw = await umzug.pending();
+  if (!pendingRaw.length) {
     logger.info("No pending SQL migrations.");
     return;
   }
+
+  // umzug.pending() orders by filename as a STRING, so "100_..." sorts before "70_..." (as
+  // characters, "1" < "7") - dead wrong once migration numbers cross a digit-count boundary,
+  // and exactly how a numbered-after-97 migration can run before the migration that creates the
+  // table it ALTERs. Re-sort numerically by the leading number before doing anything else.
+  const pending = [...pendingRaw].sort(
+    (a, b) => (getMigrationNumber(a.file) ?? 0) - (getMigrationNumber(b.file) ?? 0)
+  );
 
   const toBaseline = pending.filter((m) => {
     const num = getMigrationNumber(m.file);
@@ -60,9 +68,14 @@ async function runMigrations() {
 
   if (toRun.length) {
     logger.info(
-      `Applying ${toRun.length} pending SQL migration(s): ${toRun.map((m) => m.file).join(", ")}`
+      `Applying ${toRun.length} pending SQL migration(s) in numeric order: ${toRun.map((m) => m.file).join(", ")}`
     );
-    await umzug.up({ migrations: toRun.map((m) => m.file) });
+    // One at a time, in our own numeric order - umzug.up({migrations: [...]}) is not guaranteed
+    // to execute in the order of the array passed in (it runs them in umzug's own pending-list
+    // order), so a single batch call here would silently reintroduce the same ordering bug.
+    for (const migration of toRun) {
+      await umzug.up({ migrations: [migration.file] });
+    }
     logger.info("SQL migrations applied successfully.");
   }
 }
