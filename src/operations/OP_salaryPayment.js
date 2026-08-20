@@ -445,8 +445,11 @@ function calculateAge(dob) {
 // Rs. 25,000 OR the employee is over 60 - recomputed fresh at payroll time rather than trusted
 // from whatever's stored on Employee Salary Master, since age crosses the 60 threshold silently
 // over time without that record ever being re-saved.
-function computeProfessionalTax(standardMonthlyGross, dob) {
-  if ((Number(standardMonthlyGross) || 0) < 25000) return 0;
+// PT = flat Rs. 200/month, waived (0) if the employee's ACTUAL gross this month (after LOP/
+// attendance proration) is under Rs. 25,000, or if they're over 60 - checked against what was
+// actually paid, not the standard salary structure, so a heavy-LOP month can genuinely waive PT.
+function computeProfessionalTax(actualMonthlyGross, dob) {
+  if ((Number(actualMonthlyGross) || 0) < 25000) return 0;
   const age = calculateAge(dob);
   if (age != null && age > 60) return 0;
   return 200;
@@ -454,9 +457,15 @@ function computeProfessionalTax(standardMonthlyGross, dob) {
 
 // ESI (Employee): 0.75% of the standard monthly gross when it's under Rs. 21,000, else 0 -
 // same "recompute fresh, never trust the stored value" treatment as computeProfessionalTax.
-function computeEmployeeESI(standardMonthlyGross) {
-  const gross = Number(standardMonthlyGross) || 0;
-  return gross < 21000 ? round2(gross * 0.0075) : 0;
+// Eligibility (is this employee covered at all?) is checked against the standard, unprorated
+// monthly gross - same basis as Employee Salary Master, so a LOP-heavy month can't flip someone
+// in/out of ESI coverage. The deducted AMOUNT, once eligible, is 0.75% of the gross actually
+// paid this month - like PF, it scales down with LOP/attendance instead of staying pinned to
+// the full-month figure.
+function computeEmployeeESI(standardMonthlyGross, actualMonthlyGross) {
+  const standard = Number(standardMonthlyGross) || 0;
+  const actual = Number(actualMonthlyGross ?? standardMonthlyGross) || 0;
+  return standard < 21000 ? round2(actual * 0.0075) : 0;
 }
 
 exports.previewBulkPayroll = async function (payment_month, payment_year) {
@@ -516,30 +525,32 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       : {};
 
     const employeesWithAttendance = employees.map(emp => {
-      // Recompute Professional Tax fresh (gross threshold + age>60 waiver) against the
-      // standard, unprorated monthly gross - corrected in place before anything downstream
-      // (including the `master` snapshot below) reads total_deductions/professional_tax, so
-      // every consumer of this row - preview totals, the frontend's own recalculation on
-      // attendance/income-tax edits, and processBulkPayroll - inherits the corrected baseline.
-      const basePT = Number(emp.professional_tax) || 0;
-      const ptOverride = computeProfessionalTax(emp.gross_salary, emp.dob);
-      if (ptOverride !== basePT) {
-        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - basePT + ptOverride);
-        emp.professional_tax = ptOverride;
-      }
-      // Same fresh-recompute treatment for ESI (Employee) - 0.75% of standard gross under
-      // Rs. 21,000, else 0.
-      const baseESI = Number(emp.employee_state_insurance) || 0;
-      const esiOverride = computeEmployeeESI(emp.gross_salary);
-      if (esiOverride !== baseESI) {
-        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - baseESI + esiOverride);
-        emp.employee_state_insurance = esiOverride;
-      }
-
       const leave = emp.user_id ? leaveMap[emp.user_id] : null;
       const att = computeAttendance(monthInfo.working_days, leave, 0);
       const ratio = clampRatio(att.paid_days, monthInfo.working_days);
       const { fields, gross_salary } = prorateEarnings(emp, ratio, emp.incentive_amount);
+
+      // Recompute Professional Tax fresh (gross threshold + age>60 waiver) against the ACTUAL
+      // gross paid this month (gross_salary, after LOP/attendance proration) - corrected in
+      // place before anything downstream (including the `master` snapshot below) reads
+      // total_deductions/professional_tax, so every consumer of this row - preview totals, the
+      // frontend's own recalculation on attendance/income-tax edits, and processBulkPayroll -
+      // inherits the corrected baseline.
+      const basePT = Number(emp.professional_tax) || 0;
+      const ptOverride = computeProfessionalTax(gross_salary, emp.dob);
+      if (ptOverride !== basePT) {
+        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - basePT + ptOverride);
+        emp.professional_tax = ptOverride;
+      }
+      // Same fresh-recompute treatment for ESI (Employee) - eligibility off the standard gross
+      // (emp.gross_salary, unprorated), deducted amount off the actual gross paid this month
+      // (gross_salary, just prorated above).
+      const baseESI = Number(emp.employee_state_insurance) || 0;
+      const esiOverride = computeEmployeeESI(emp.gross_salary, gross_salary);
+      if (esiOverride !== baseESI) {
+        emp.total_deductions = round2((Number(emp.total_deductions) || 0) - baseESI + esiOverride);
+        emp.employee_state_insurance = esiOverride;
+      }
       // PF (Employee) is 12% of Basic+DA actually paid this month, not the full monthly figure -
       // LOP/attendance shortfalls that already prorated basic_salary/dearness_allowance down via
       // prorateEarnings above must prorate PF the same way, same treatment as PT/ESI above.
@@ -698,14 +709,16 @@ exports.processBulkPayroll = async function (body) {
         const baseIncomeTax = Number(master.income_tax) || 0;
         const incomeTaxOverride = emp.income_tax != null ? (Number(emp.income_tax) || 0) : baseIncomeTax;
         // Professional Tax is never trusted from Employee Salary Master either - recomputed
-        // fresh against the standard (unprorated) monthly gross + current age, since age
-        // crosses the 60 waiver threshold silently over time without that record being re-saved.
+        // fresh against the ACTUAL gross paid this month (gross_salary, after LOP/attendance
+        // proration) + current age, since both a heavy-LOP month and the 60 waiver threshold
+        // can change PT without that record ever being re-saved.
         const standardGross = EARNING_KEYS.reduce((sum, k) => sum + (Number(master[k]) || 0), 0);
         const basePT = Number(master.professional_tax) || 0;
-        const ptOverride = computeProfessionalTax(standardGross, master.dob);
-        // Same fresh-recompute treatment for ESI (Employee).
+        const ptOverride = computeProfessionalTax(gross_salary, master.dob);
+        // Same fresh-recompute treatment for ESI (Employee) - eligibility off the standard
+        // gross, deducted amount off the actual gross paid this month (gross_salary, prorated).
         const baseESI = Number(master.employee_state_insurance) || 0;
-        const esiOverride = computeEmployeeESI(standardGross);
+        const esiOverride = computeEmployeeESI(standardGross, gross_salary);
         // PF (Employee) is 12% of Basic+DA actually paid this month, not the full monthly
         // figure - LOP/attendance shortfalls already prorated basic_salary/dearness_allowance
         // down via prorateEarnings above, so PF has to follow the same ratio instead of staying
