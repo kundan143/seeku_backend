@@ -350,6 +350,173 @@ exports.getTodayStats = async function () {
   }
 };
 
+// Monthly Sheet: every active employee x every day of the given month, already classified into
+// P (Present) / HD (Half Day) / WFH / A (Absent) / '-' (week off or holiday), pivoted into
+// {days, rows} so the frontend can render it directly with no date/hours math of its own.
+// Priority per day: week off/holiday > WFH > a real punch (hours-based) > approved
+// regularization with no punch time (counts as Present) > nothing at all (Absent).
+// 2nd/4th Saturdays are half working days - the Present threshold drops from 8 hrs to 4 hrs.
+exports.getMonthlySheet = async function (body) {
+  try {
+    const year = Number(body.year);
+    const month = Number(body.month); // 1-12
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const pad = (n) => String(n).padStart(2, '0');
+    const fromDate = `${year}-${pad(month)}-01`;
+    const toDate = `${year}-${pad(month)}-${pad(daysInMonth)}`;
+
+    const query = `with days as (
+                      select generate_series(:fromDate::date, :toDate::date, interval '1 day')::date as punch_date
+                    ),
+                    active_employees as (
+                      select id as user_id, concat(first_name, ' ', middle_name, ' ', last_name) as user_name
+                      from users_master
+                      where status = true
+                    ),
+                    punch_summary as (
+                      select user_id, punch_date,
+                        min(punch_time) as first_punch,
+                        max(punch_time) as last_punch,
+                        count(*) as punch_count
+                      from attendance_punches
+                      where is_deleted = 0 and punch_date between :fromDate and :toDate
+                      group by user_id, punch_date
+                    ),
+                    reg_summary as (
+                      select user_id, punch_date,
+                        (punch_date + coalesce(requested_in_time, '00:00'))::timestamp as first_punch,
+                        (punch_date + coalesce(requested_out_time, requested_in_time, '00:00'))::timestamp as last_punch
+                      from attendance_regularization
+                      where status = 1 and is_deleted = 0 and punch_date between :fromDate and :toDate
+                    ),
+                    wfh_summary as (
+                      select user_id, wfh_date as punch_date
+                      from wfh_requests
+                      where status = 1 and is_deleted = 0 and wfh_date between :fromDate and :toDate
+                    ),
+                    holiday_days as (
+                      select holiday_date as punch_date
+                      from holidays_master
+                      where status = 1 and is_optional = false and holiday_date between :fromDate and :toDate
+                    )
+                    select
+                      e.user_id,
+                      e.user_name,
+                      to_char(d.punch_date, 'YYYY-MM-DD') as punch_date,
+                      coalesce(ps.first_punch, rs.first_punch) as first_punch,
+                      coalesce(ps.last_punch, rs.last_punch) as last_punch,
+                      coalesce(ps.punch_count, 0) as punch_count,
+                      (rs.punch_date is not null) as is_regularized,
+                      (ws.punch_date is not null) as is_wfh,
+                      (hd.punch_date is not null) as is_holiday,
+                      (extract(dow from d.punch_date) = 0) as is_sunday
+                    from days d
+                    cross join active_employees e
+                    left join punch_summary ps on ps.user_id = e.user_id and ps.punch_date = d.punch_date
+                    left join reg_summary rs on rs.user_id = e.user_id and rs.punch_date = d.punch_date
+                    left join wfh_summary ws on ws.user_id = e.user_id and ws.punch_date = d.punch_date
+                    left join holiday_days hd on hd.punch_date = d.punch_date
+                    order by e.user_name asc, d.punch_date asc;`;
+    const rows = await sequelize.query(query, { replacements: { fromDate, toDate }, type: QueryTypes.SELECT });
+
+    const days = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${pad(month)}-${pad(d)}`;
+      days.push({
+        dateStr,
+        dayNum: d,
+        weekday: new Date(year, month - 1, d).toLocaleDateString('en-US', { weekday: 'short' }),
+      });
+    }
+
+    const isHalfDaySaturday = (dateStr) => {
+      const [y, m, dd] = dateStr.split('-').map(Number);
+      const date = new Date(y, m - 1, dd);
+      if (date.getDay() !== 6) {
+        return false;
+      }
+      const occurrence = Math.ceil(dd / 7);
+      return occurrence === 2 || occurrence === 4;
+    };
+
+    const computeStatus = (row) => {
+      if (row.is_holiday) {
+        return { code: 'HOL', cls: 'off', title: 'Holiday' };
+      }
+      if (row.is_sunday) {
+        return { code: '-', cls: 'off', title: 'Week Off' };
+      }
+      if (row.is_wfh) {
+        return { code: 'WFH', cls: 'wfh', title: 'Work From Home' };
+      }
+      if (row.first_punch && row.last_punch) {
+        const hours = (new Date(row.last_punch).getTime() - new Date(row.first_punch).getTime()) / 3600000;
+        const threshold = isHalfDaySaturday(row.punch_date) ? 4 : 8;
+        return hours >= threshold
+          ? { code: 'P', cls: 'p', title: `Present (${hours.toFixed(1)} hrs)` }
+          : { code: 'HD', cls: 'hd', title: `Half Day (${hours.toFixed(1)} hrs)` };
+      }
+      if (row.is_regularized) {
+        return { code: 'P', cls: 'p', title: 'Present (regularized)' };
+      }
+      return { code: 'A', cls: 'a', title: 'Absent' };
+    };
+
+    const rowsByUser = new Map();
+    const dayFlagsByDate = new Map(); // dateStr -> { is_holiday, is_sunday } - same for every employee
+    rows.forEach((r) => {
+      if (!rowsByUser.has(r.user_id)) {
+        rowsByUser.set(r.user_id, { user_id: r.user_id, user_name: r.user_name, cells: {} });
+      }
+      rowsByUser.get(r.user_id).cells[r.punch_date] = computeStatus(r);
+      if (!dayFlagsByDate.has(r.punch_date)) {
+        dayFlagsByDate.set(r.punch_date, { is_holiday: r.is_holiday, is_sunday: r.is_sunday });
+      }
+    });
+
+    // Matches OP_salaryPayment.getMonthWorkingDays exactly, so this sheet's Working/Present/LOP
+    // columns agree with what payroll will actually calculate for the same month: every month is
+    // treated as exactly 30 days (day 31, if any, is dropped), and Sunday is a paid weekly off -
+    // it stays part of the 30 and always counts as present, never as a LOP day. Only a holiday
+    // that does NOT fall on a Sunday reduces the working-day count.
+    const PAYROLL_MONTH_DAYS = 30;
+    rowsByUser.forEach((entry) => {
+      let workingDays = 0;
+      let presentDays = 0;
+      for (let d = 1; d <= Math.min(daysInMonth, PAYROLL_MONTH_DAYS); d++) {
+        const dateStr = `${year}-${pad(month)}-${pad(d)}`;
+        const flags = dayFlagsByDate.get(dateStr);
+        if (flags?.is_sunday) {
+          workingDays++;
+          presentDays += 1;
+          continue;
+        }
+        if (flags?.is_holiday) {
+          continue;
+        }
+        workingDays++;
+        const cell = entry.cells[dateStr];
+        if (cell?.code === 'P' || cell?.code === 'WFH') {
+          presentDays += 1;
+        } else if (cell?.code === 'HD') {
+          presentDays += 0.5;
+        }
+      }
+      entry.total_working_days = workingDays;
+      entry.total_present_days = Math.round(presentDays * 10) / 10;
+      entry.lop_days = Math.max(0, Math.round((workingDays - presentDays) * 10) / 10);
+    });
+
+    responseCodes.SUCCESS.data = { days, rows: Array.from(rowsByUser.values()) };
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Monthly Sheet";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 // Drill-down: every raw punch for one employee on one day.
 exports.getRawPunchesByUserDate = async function (body) {
   try {

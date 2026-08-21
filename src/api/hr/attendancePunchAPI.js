@@ -29,6 +29,11 @@ router.get('/getTodayStats', async (req, res, next) => {
     return res.send(await OP_AttendancePunch.getTodayStats());
 });
 
+// 5c = Every employee x every day of a month, pre-classified into P/HD/WFH/A/'-' (Monthly Sheet)
+router.post('/getMonthlySheet', async (req, res, next) => {
+    return res.send(await OP_AttendancePunch.getMonthlySheet(req.body));
+});
+
 // 6 = All raw punches for one employee on one day (drill-down)
 router.post('/getRawPunches', async (req, res, next) => {
     return res.send(await OP_AttendancePunch.getRawPunchesByUserDate(req.body));
