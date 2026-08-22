@@ -17,7 +17,6 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       references: { model: "leave_type_master", key: "id" },
     },
-    year: { type: DataTypes.INTEGER, allowNull: true },
     allocated_days: { type: DataTypes.NUMERIC(5, 1), allowNull: true },
     used_days: {
       type: DataTypes.NUMERIC(5, 1),
@@ -25,11 +24,6 @@ module.exports = function (sequelize, DataTypes) {
       defaultValue: 0,
     },
     remaining_days: { type: DataTypes.NUMERIC(5, 1), allowNull: true },
-    carry_forward_days: {
-      type: DataTypes.NUMERIC(5, 1),
-      allowNull: true,
-      defaultValue: 0,
-    },
     status: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 1 },
     created_by: {
       type: DataTypes.INTEGER,

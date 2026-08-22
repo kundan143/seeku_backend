@@ -7,9 +7,57 @@ const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { Op, where, DATE, QueryTypes } = require("sequelize");
 
+// Parses a 'YYYY-MM-DD' string into a local-time Date - avoids the classic `new Date("YYYY-MM-DD")`
+// gotcha (parsed as UTC midnight, which shifts the apparent day-of-week whenever the server's
+// timezone isn't UTC).
+function parseLocalDate(dateStr) {
+  const [y, m, d] = String(dateStr).slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// Calendar days in [start_date, end_date] (inclusive), minus Sundays and mandatory holidays -
+// the authoritative "how many days is this leave actually for" figure. Computed server-side (not
+// trusted from whichever of the several leave-apply UIs submitted the request) so every path -
+// HR direct-entry, the shared apply-leave dialog, My Profile's own form - agrees, and so
+// approvalUpdateData never has to re-derive it (and risk double-subtracting holidays) later.
+async function computeWorkingDaysCount(startDate, endDate, transaction) {
+  const holidaysCount = await holidaysMaster.count({
+    where: {
+      is_optional: false,
+      status: 1,
+      holiday_date: { [Op.between]: [startDate, endDate] },
+    },
+    transaction,
+  });
+
+  const start = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
+  let sundaysCount = 0;
+  const cur = new Date(start);
+  while (cur <= end) {
+    if (cur.getDay() === 0) {
+      sundaysCount++;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const totalCalendarDays = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  return Math.max(0, totalCalendarDays - sundaysCount - holidaysCount);
+}
+
 exports.addData = async function (body) {
   const t = await sequelize.transaction();
   try {
+    if (body.data.start_date && body.data.end_date) {
+      body.data.total_days = await computeWorkingDaysCount(body.data.start_date, body.data.end_date, t);
+      if (body.data.total_days <= 0) {
+        await t.rollback();
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "Selected date range has no working days (Sundays/holidays are excluded).";
+        return responseCodes.BAD_REQUEST;
+      }
+    }
+
     const result = await userLeavesDetails.create(body.data, {
       transaction: t,
     });
@@ -21,7 +69,7 @@ exports.addData = async function (body) {
     return responseCodes.SUCCESS;
   } catch (e) {
     await t.rollback(); // ❌ Rollback on failure
-    
+
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Add Leave";
     return responseCodes.BAD_REQUEST;
@@ -31,6 +79,16 @@ exports.addData = async function (body) {
 exports.updateData = async function (body) {
   const t = await sequelize.transaction();
   try {
+    if (body.data.start_date && body.data.end_date) {
+      body.data.total_days = await computeWorkingDaysCount(body.data.start_date, body.data.end_date, t);
+      if (body.data.total_days <= 0) {
+        await t.rollback();
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "Selected date range has no working days (Sundays/holidays are excluded).";
+        return responseCodes.BAD_REQUEST;
+      }
+    }
+
     await userLeavesDetails.update(body.data, {
       where: { id: body.id },
       transaction: t,
@@ -43,7 +101,7 @@ exports.updateData = async function (body) {
     return responseCodes.SUCCESS;
   } catch (e) {
     await t.rollback();
-    
+
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Leave";
     return responseCodes.BAD_REQUEST;
@@ -53,12 +111,10 @@ exports.approvalUpdateData = async function (body) {
   const t = await sequelize.transaction();
   try {
     if (body.data.status === 1) {
-      const currentYear = new Date().getFullYear();
       const userLeaveBalanceRecord = await userLeaveBalance.findOne({
         where: {
           user_id: body.data.user_id,
           leave_type_id: body.data.leave_type_id,
-          year: currentYear,
         },
         transaction: t,
       });
@@ -69,21 +125,12 @@ exports.approvalUpdateData = async function (body) {
         return responseCodes.BAD_REQUEST;
       }
 
-      const holidaysCount = await holidaysMaster.count({
-        where: {
-          is_optional: false,
-          status: 1,
-          holiday_date: {
-            [Op.between]: [body.data.start_date, body.data.end_date],
-          },
-        },
-        transaction: t,
-      });
-
+      // total_days is already Sundays/holidays-excluded, computed once and authoritatively by
+      // addData/updateData at application time - no need (and it would be wrong) to subtract
+      // holidays again here.
       const remainingDays = Number(userLeaveBalanceRecord.remaining_days);
       const usedDays = Number(userLeaveBalanceRecord.used_days);
-      const totalDays = Number(body.data.total_days);
-      const actualLeave = totalDays - holidaysCount;
+      const actualLeave = Number(body.data.total_days);
       if (actualLeave <= 0) {
         responseCodes.BAD_REQUEST.data = null;
         responseCodes.BAD_REQUEST.message = "Invalid Leave Duration";
@@ -107,7 +154,6 @@ exports.approvalUpdateData = async function (body) {
           where: {
             user_id: body.data.user_id,
             leave_type_id: body.data.leave_type_id,
-            year: currentYear,
           },
           transaction: t,
         }

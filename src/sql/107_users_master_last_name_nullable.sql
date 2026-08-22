@@ -1,0 +1,1 @@
+ALTER TABLE users_master ALTER COLUMN last_name DROP NOT NULL;

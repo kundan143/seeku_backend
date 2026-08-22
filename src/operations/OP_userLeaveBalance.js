@@ -78,14 +78,13 @@ exports.getAllData = async function (body) {
 
 exports.getOneData = async function (id) {
   try {
-    const currentYear = new Date().getFullYear();
-    let query = `select ltm.leave_name as label, ltm.icon, 
-                  ulb.allocated_days as total, ulb.used_days as used, 
+    let query = `select ltm.leave_name as label, ltm.icon,
+                  ulb.allocated_days as total, ulb.used_days as used,
                   ltm.color_code, ulb.remaining_days as remaining
                   from user_leave_balance ulb
-                  join users_master um on um.id = ulb.user_id 
-                  join leave_type_master ltm on ltm.id = ulb.leave_type_id 
-                  where ulb.status = 1 and ulb.user_id = ${id} and ulb.year = ${currentYear}
+                  join users_master um on um.id = ulb.user_id
+                  join leave_type_master ltm on ltm.id = ulb.leave_type_id
+                  where ulb.status = 1 and ulb.user_id = ${id}
                   order by ulb.id desc;`;
     const data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
@@ -105,7 +104,6 @@ exports.getTotalRemainingLeave = async function (id) {
     const totalRemainingLeave = await userLeaveBalance.sum("remaining_days", {
       where: {
         user_id: id,
-        year: new Date().getFullYear(),
       },
     });
     responseCodes.SUCCESS.data = totalRemainingLeave;

@@ -889,9 +889,9 @@ exports.generateSlip = async function (id) {
       `SELECT ltm.leave_name, ulb.allocated_days, ulb.used_days, ulb.remaining_days
        FROM user_leave_balance ulb
        JOIN leave_type_master ltm ON ltm.id = ulb.leave_type_id
-       WHERE ulb.user_id = :user_id AND ulb.year = :year AND ulb.status = 1
+       WHERE ulb.user_id = :user_id AND ulb.status = 1
        ORDER BY ltm.leave_name ASC`,
-      { replacements: { user_id: sp.user_id, year: sp.payment_year }, type: QueryTypes.SELECT }
+      { replacements: { user_id: sp.user_id }, type: QueryTypes.SELECT }
     );
 
     const slipsDir = path.join(__dirname, "..", "public", "salary-slips");

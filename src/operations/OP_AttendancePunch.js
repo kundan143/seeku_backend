@@ -368,10 +368,21 @@ exports.getMonthlySheet = async function (body) {
     const query = `with days as (
                       select generate_series(:fromDate::date, :toDate::date, interval '1 day')::date as punch_date
                     ),
-                    active_employees as (
-                      select id as user_id, concat(first_name, ' ', middle_name, ' ', last_name) as user_name
-                      from users_master
+                    relevant_employees as (
+                      -- Currently-active employees, PLUS anyone who has any activity in this
+                      -- month even if they've since left (status = false) - so a past month's
+                      -- sheet doesn't retroactively lose someone who worked it just because
+                      -- they're no longer employed today. doj gates days before they joined.
+                      select id as user_id, concat(first_name, ' ', middle_name, ' ', last_name) as user_name,
+                        to_char(doj, 'YYYY-MM-DD') as doj
+                      from users_master um
                       where status = true
+                         or id in (
+                           select user_id from attendance_punches where is_deleted = 0 and punch_date between :fromDate and :toDate
+                           union select user_id from attendance_regularization where status = 1 and is_deleted = 0 and punch_date between :fromDate and :toDate
+                           union select user_id from wfh_requests where status = 1 and is_deleted = 0 and wfh_date between :fromDate and :toDate
+                           union select user_id from users_leave_details where status = 1 and start_date <= :toDate and end_date >= :fromDate
+                         )
                     ),
                     punch_summary as (
                       select user_id, punch_date,
@@ -384,8 +395,8 @@ exports.getMonthlySheet = async function (body) {
                     ),
                     reg_summary as (
                       select user_id, punch_date,
-                        (punch_date + coalesce(requested_in_time, '00:00'))::timestamp as first_punch,
-                        (punch_date + coalesce(requested_out_time, requested_in_time, '00:00'))::timestamp as last_punch
+                        case when requested_in_time is not null then (punch_date + requested_in_time)::timestamp end as first_punch,
+                        case when requested_out_time is not null then (punch_date + requested_out_time)::timestamp end as last_punch
                       from attendance_regularization
                       where status = 1 and is_deleted = 0 and punch_date between :fromDate and :toDate
                     ),
@@ -398,10 +409,19 @@ exports.getMonthlySheet = async function (body) {
                       select holiday_date as punch_date
                       from holidays_master
                       where status = 1 and is_optional = false and holiday_date between :fromDate and :toDate
+                    ),
+                    leave_summary as (
+                      select uld.user_id, uld.start_date, uld.end_date, ltm.leave_code
+                      from users_leave_details uld
+                      join leave_type_master ltm on ltm.id = uld.leave_type_id
+                      where uld.status = 1
+                        and uld.start_date <= :toDate
+                        and uld.end_date >= :fromDate
                     )
                     select
                       e.user_id,
                       e.user_name,
+                      e.doj,
                       to_char(d.punch_date, 'YYYY-MM-DD') as punch_date,
                       coalesce(ps.first_punch, rs.first_punch) as first_punch,
                       coalesce(ps.last_punch, rs.last_punch) as last_punch,
@@ -409,13 +429,19 @@ exports.getMonthlySheet = async function (body) {
                       (rs.punch_date is not null) as is_regularized,
                       (ws.punch_date is not null) as is_wfh,
                       (hd.punch_date is not null) as is_holiday,
-                      (extract(dow from d.punch_date) = 0) as is_sunday
+                      (extract(dow from d.punch_date) = 0) as is_sunday,
+                      ls.leave_code
                     from days d
-                    cross join active_employees e
+                    cross join relevant_employees e
                     left join punch_summary ps on ps.user_id = e.user_id and ps.punch_date = d.punch_date
                     left join reg_summary rs on rs.user_id = e.user_id and rs.punch_date = d.punch_date
                     left join wfh_summary ws on ws.user_id = e.user_id and ws.punch_date = d.punch_date
                     left join holiday_days hd on hd.punch_date = d.punch_date
+                    left join lateral (
+                      select leave_code from leave_summary ls2
+                      where ls2.user_id = e.user_id and d.punch_date between ls2.start_date and ls2.end_date
+                      limit 1
+                    ) ls on true
                     order by e.user_name asc, d.punch_date asc;`;
     const rows = await sequelize.query(query, { replacements: { fromDate, toDate }, type: QueryTypes.SELECT });
 
@@ -440,11 +466,24 @@ exports.getMonthlySheet = async function (body) {
     };
 
     const computeStatus = (row) => {
+      if (row.doj && row.punch_date < row.doj) {
+        return { code: '-', cls: 'off', title: 'Not Yet Joined' };
+      }
       if (row.is_holiday) {
         return { code: 'HOL', cls: 'off', title: 'Holiday' };
       }
       if (row.is_sunday) {
         return { code: '-', cls: 'off', title: 'Week Off' };
+      }
+      // An approved leave application covering this day is authoritative over any incidental
+      // punch/WFH record - it deducted from user_leave_balance (see OP_usersLeave.approvalUpdateData,
+      // which already refuses to approve a leave the balance can't cover), so it's a Paid Leave
+      // day, not Absent/LOP. The one exception is the "LOP" leave type itself (leave_code = 'LOP'),
+      // which by definition is an unpaid leave application - that stays a LOP day.
+      if (row.leave_code) {
+        return String(row.leave_code).trim().toUpperCase() === 'LOP'
+          ? { code: 'LOP', cls: 'a', title: 'Leave (Loss of Pay)' }
+          : { code: 'PL', cls: 'pl', title: 'Paid Leave' };
       }
       if (row.is_wfh) {
         return { code: 'WFH', cls: 'wfh', title: 'Work From Home' };
@@ -466,7 +505,7 @@ exports.getMonthlySheet = async function (body) {
     const dayFlagsByDate = new Map(); // dateStr -> { is_holiday, is_sunday } - same for every employee
     rows.forEach((r) => {
       if (!rowsByUser.has(r.user_id)) {
-        rowsByUser.set(r.user_id, { user_id: r.user_id, user_name: r.user_name, cells: {} });
+        rowsByUser.set(r.user_id, { user_id: r.user_id, user_name: r.user_name, doj: r.doj, cells: {} });
       }
       rowsByUser.get(r.user_id).cells[r.punch_date] = computeStatus(r);
       if (!dayFlagsByDate.has(r.punch_date)) {
@@ -476,31 +515,58 @@ exports.getMonthlySheet = async function (body) {
 
     // Matches OP_salaryPayment.getMonthWorkingDays exactly, so this sheet's Working/Present/LOP
     // columns agree with what payroll will actually calculate for the same month: every month is
-    // treated as exactly 30 days (day 31, if any, is dropped), and Sunday is a paid weekly off -
-    // it stays part of the 30 and always counts as present, never as a LOP day. Only a holiday
-    // that does NOT fall on a Sunday reduces the working-day count.
+    // treated as exactly 30 days (day 31, if any, is dropped), and Sunday is normally a paid
+    // weekly off (stays part of the 30, always counts as present) with a holiday normally
+    // excluded from the working-day count entirely.
+    //
+    // Sandwich rule: if the employee has ANY Absent day anywhere that month, every Sunday and
+    // Holiday that month loses its paid/neutral treatment too - each becomes a counted working
+    // day with zero present credit (i.e. also LOP), not just the ones adjacent to the absence.
+    //
+    // A Paid Leave (PL) day is fully neutral like a holiday - it's excluded from both Working
+    // Days and Present Days entirely, so it never shows up as LOP (unlike an LOP-type leave
+    // application, which is treated the same as an unexplained Absence).
     const PAYROLL_MONTH_DAYS = 30;
     rowsByUser.forEach((entry) => {
+      // An LOP-type leave application is a Loss of Pay day just like an unexplained Absence -
+      // both trigger the sandwich rule above.
+      const hasAnyAbsent = Object.values(entry.cells).some((c) => c.code === 'A' || c.code === 'LOP');
+
       let workingDays = 0;
       let presentDays = 0;
       for (let d = 1; d <= Math.min(daysInMonth, PAYROLL_MONTH_DAYS); d++) {
         const dateStr = `${year}-${pad(month)}-${pad(d)}`;
+        if (entry.doj && dateStr < entry.doj) {
+          // Not yet employed - fully neutral, same treatment as a Paid Leave day.
+          continue;
+        }
         const flags = dayFlagsByDate.get(dateStr);
         if (flags?.is_sunday) {
           workingDays++;
-          presentDays += 1;
+          if (!hasAnyAbsent) {
+            presentDays += 1;
+          }
           continue;
         }
         if (flags?.is_holiday) {
+          if (hasAnyAbsent) {
+            workingDays++;
+          }
+          continue;
+        }
+        const cell = entry.cells[dateStr];
+        if (cell?.code === 'PL') {
+          // Paid, approved leave - fully neutral like a holiday, doesn't count toward Working
+          // Days or Present Days (so it never shows as LOP), even under the sandwich rule.
           continue;
         }
         workingDays++;
-        const cell = entry.cells[dateStr];
         if (cell?.code === 'P' || cell?.code === 'WFH') {
           presentDays += 1;
         } else if (cell?.code === 'HD') {
           presentDays += 0.5;
         }
+        // 'LOP' and 'A' both contribute 0 - already a Loss of Pay day.
       }
       entry.total_working_days = workingDays;
       entry.total_present_days = Math.round(presentDays * 10) / 10;

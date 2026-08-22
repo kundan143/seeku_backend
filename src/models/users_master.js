@@ -13,7 +13,7 @@ let columns = {
     },
     last_name: {
         type: DataTypes.STRING(255),
-        allowNull: false
+        allowNull: true
     },
     mobile: {
         type: DataTypes.STRING(255),
