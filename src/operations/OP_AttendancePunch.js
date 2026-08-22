@@ -301,7 +301,8 @@ exports.getTodayStats = async function () {
         limit 1
       ),
       active_employees as (
-        select id as user_id from users_master where status = true
+        select id as user_id, concat(first_name, ' ', middle_name, ' ', last_name) as user_name
+        from users_master where status = true
       ),
       todays_wfh as (
         select distinct user_id from wfh_requests
@@ -316,31 +317,33 @@ exports.getTodayStats = async function () {
       todays_reg as (
         select distinct user_id from attendance_regularization
         where punch_date = current_date and status = 1 and is_deleted = 0
-      ),
-      classified as (
-        select ae.user_id,
-          case
-            when wfh.user_id is not null then 'WFH'
-            when tp.first_punch is not null and p.office_start_time is not null
-              and tp.first_punch::time > (p.office_start_time + (coalesce(p.grace_period_minutes, 0) || ' minutes')::interval)
-            then 'LATE'
-            when tp.first_punch is not null or reg.user_id is not null then 'PRESENT'
-            else 'ABSENT'
-          end as bucket
-        from active_employees ae
-        left join todays_wfh wfh on wfh.user_id = ae.user_id
-        left join todays_punch tp on tp.user_id = ae.user_id
-        left join todays_reg reg on reg.user_id = ae.user_id
-        left join policy p on true
       )
-      select
-        count(*) filter (where bucket = 'PRESENT') as present_count,
-        count(*) filter (where bucket = 'LATE') as late_count,
-        count(*) filter (where bucket = 'WFH') as wfh_count,
-        count(*) filter (where bucket = 'ABSENT') as absent_count
-      from classified;`;
-    const data = await sequelize.query(query, { type: QueryTypes.SELECT });
-    responseCodes.SUCCESS.data = data[0] || { present_count: 0, late_count: 0, wfh_count: 0, absent_count: 0 };
+      select ae.user_id, ae.user_name,
+        case
+          when wfh.user_id is not null then 'WFH'
+          when tp.first_punch is not null and p.office_start_time is not null
+            and tp.first_punch::time > (p.office_start_time + (coalesce(p.grace_period_minutes, 0) || ' minutes')::interval)
+          then 'LATE'
+          when tp.first_punch is not null or reg.user_id is not null then 'PRESENT'
+          else 'ABSENT'
+        end as bucket
+      from active_employees ae
+      left join todays_wfh wfh on wfh.user_id = ae.user_id
+      left join todays_punch tp on tp.user_id = ae.user_id
+      left join todays_reg reg on reg.user_id = ae.user_id
+      left join policy p on true
+      order by ae.user_name asc;`;
+    const rows = await sequelize.query(query, { type: QueryTypes.SELECT });
+
+    const counts = { present_count: 0, late_count: 0, wfh_count: 0, absent_count: 0 };
+    rows.forEach((r) => {
+      if (r.bucket === 'PRESENT') counts.present_count++;
+      else if (r.bucket === 'LATE') counts.late_count++;
+      else if (r.bucket === 'WFH') counts.wfh_count++;
+      else if (r.bucket === 'ABSENT') counts.absent_count++;
+    });
+
+    responseCodes.SUCCESS.data = { ...counts, rows };
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
