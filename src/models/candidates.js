@@ -13,7 +13,7 @@ module.exports = function (sequelize, DataTypes) {
         },
         last_name: {
             type: DataTypes.STRING(255),
-            allowNull: false
+            allowNull: true
         },
         email: {
             type: DataTypes.STRING(255),

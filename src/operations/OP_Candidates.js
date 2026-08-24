@@ -365,7 +365,7 @@ exports.emailOfferLetter = async function (id, toEmail) {
       html,
       attachments: [
         {
-          filename: `Offer_Letter_${c.first_name}_${c.last_name}.pdf`,
+          filename: `Offer_Letter_${[c.first_name, c.last_name].filter(Boolean).join('_')}.pdf`,
           path: path.join(__dirname, "..", "public", letterUrl),
         },
       ],
