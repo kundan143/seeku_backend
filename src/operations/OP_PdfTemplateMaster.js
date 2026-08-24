@@ -111,6 +111,12 @@ exports.setDefault = async function (body) {
 			responseCodes.BAD_REQUEST.message = "Template not found";
 			return responseCodes.BAD_REQUEST;
 		}
+		if (template.is_active != 1) {
+			await t.rollback();
+			responseCodes.BAD_REQUEST.data = null;
+			responseCodes.BAD_REQUEST.message = "This template is Inactive. Activate it before setting it as default, otherwise PDF generation will fail to find an active default template.";
+			return responseCodes.BAD_REQUEST;
+		}
 		await pdfTemplateMaster.update(
 			{ is_default: false },
 			{ where: { template_type: template.template_type }, transaction: t }
