@@ -285,9 +285,17 @@ exports.getAllData = async function (body) {
     const query = `
       SELECT usd.*,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
-             um.dob
+             um.dob,
+             lih.mail_status AS latest_increment_mail_status
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
+      LEFT JOIN LATERAL (
+        SELECT sih.mail_status
+        FROM salary_increment_history sih
+        WHERE sih.user_id = usd.user_id AND sih.status = 1
+        ORDER BY sih.id DESC
+        LIMIT 1
+      ) lih ON true
       WHERE usd.status = 1
       ORDER BY usd.id DESC`;
     const data = await sequelize.query(query, { type: QueryTypes.SELECT });

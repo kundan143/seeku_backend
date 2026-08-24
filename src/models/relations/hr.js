@@ -30,6 +30,7 @@ h.hrPolicy = require("../hr_policy")(sequelize, DataTypes);
 h.medicalInsurance = require("../medical_insurance")(sequelize, DataTypes);
 h.incentiveMaster = require("../incentive_master")(sequelize, DataTypes);
 h.salaryIncrementHistory = require("../salary_increment_history")(sequelize, DataTypes);
+h.incrementLetterMailLog = require("../increment_letter_mail_log")(sequelize, DataTypes);
 h.socialPosts = require("../social_posts")(sequelize, DataTypes);
 h.socialPostLikes = require("../social_post_likes")(sequelize, DataTypes);
 h.socialPostComments = require("../social_post_comments")(sequelize, DataTypes);
@@ -66,6 +67,10 @@ h.salaryPayment.belongsTo(h.salaryIncrementHistory, { foreignKey: 'increment_id'
 h.salarySlipMailLog.belongsTo(h.salaryPayment, { foreignKey: 'salary_payment_id' });
 h.salarySlipMailLog.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'user_id' });
 h.salarySlipMailLog.belongsTo(m.usersMaster, { as: 'sent_by_user', foreignKey: 'sent_by' });
+
+h.incrementLetterMailLog.belongsTo(h.salaryIncrementHistory, { foreignKey: 'salary_increment_history_id' });
+h.incrementLetterMailLog.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'user_id' });
+h.incrementLetterMailLog.belongsTo(m.usersMaster, { as: 'sent_by_user', foreignKey: 'sent_by' });
 
 
 h.userLeavesDetails.belongsTo(m.usersMaster, { foreignKey: 'user_id' });

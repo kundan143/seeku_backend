@@ -18,4 +18,14 @@ router.post("/getRowsByUser", async (req, res, next) => {
     return res.send(await OP_SalaryIncrementHistory.getDataByUserId(req.body.user_id));
 });
 
+// 4 = Generate Increment Letter PDF
+router.post("/generateLetter", async (req, res, next) => {
+    return res.send(await OP_SalaryIncrementHistory.generateLetter(req.body.id));
+});
+
+// 5 = Email Increment Letter to the employee
+router.post("/emailLetter", async (req, res, next) => {
+    return res.send(await OP_SalaryIncrementHistory.emailLetter(req.body.id, req.body.to_email, req.body.sent_by, req.body.force));
+});
+
 module.exports = router;

@@ -143,6 +143,27 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.DATE,
       allowNull: true,
     },
+    pdf_template_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: "pdf_template_master",
+        key: "id",
+      },
+    },
+    letter_url: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+    },
+    mail_status: {
+      type: DataTypes.SMALLINT,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    mail_sent_date: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   };
   let optional = {
     sequelize,
