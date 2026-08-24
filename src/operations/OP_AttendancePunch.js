@@ -2,6 +2,9 @@ const { attendancePunches, usersMaster } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { QueryTypes } = require("sequelize");
+const transporter = require("../services/mailTransporterService");
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Resolves a device employee code to a system user_id, with an in-request cache
 // so the same code isn't looked up twice within one bulk import.
@@ -633,6 +636,169 @@ exports.deleteData = async function (body) {
   } catch (e) {
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Delete Punch";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+// Shared by every "email this exported sheet" action below - same branded header/footer as
+// the salary-slip email, parameterized so each caller only supplies its own heading/body copy.
+async function sendReportEmail({ recipients, fileName, fileBase64, subject, heading, bodyHtml }) {
+  const html = `
+    <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+        </head>
+        <body style="margin:0;padding:0;background-color:#f4f6f9;font-family:Arial,Helvetica,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:40px 0;">
+            <tr>
+              <td align="center">
+                <table width="650" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e5e5;">
+                  <!-- Header -->
+                  <tr>
+                    <td align="center" style="background:#0d6efd;padding:30px;">
+                      <h2 style="margin:0;color:#ffffff;font-size:28px;">
+                        Advance Cable Technologies Ltd.
+                      </h2>
+                      <p style="margin:8px 0 0;color:#eaf2ff;font-size:16px;">
+                        ${heading}
+                      </p>
+                    </td>
+                  </tr>
+                  <!-- Body -->
+                  <tr>
+                    <td style="padding:40px;">
+                      ${bodyHtml}
+                      <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                        <tr>
+                          <td align="center">
+                            <div style="display:inline-block;background:#e8f4ff;border:1px solid #cfe2ff;padding:18px 25px;border-radius:8px;color:#0d6efd;font-size:15px;">
+                              📎 <strong>The report (Excel) is attached with this email.</strong>
+                            </div>
+                          </td>
+                        </tr>
+                      </table>
+                      <p style="font-size:15px;color:#555;line-height:26px;">For any queries or clarification regarding this report, please contact the HR Department.</p>
+                      <br>
+                      <p style="margin:0;font-size:15px;color:#333;">Best Regards,</p>
+                      <p style="margin-top:8px;font-size:15px;color:#333;">
+                        <strong>HR Department</strong><br>Advance Cable Technologies Ltd.
+                      </p>
+                    </td>
+                  </tr>
+                  <!-- Footer -->
+                  <tr>
+                    <td align="center" style="background:#f8f9fa;padding:25px;font-size:12px;color:#777;line-height:20px;">
+                      This is an automatically generated email. Please do not reply to this email.<br>
+                      For any queries, please contact the HR Department.<br><br>
+                      © ${new Date().getFullYear()} Advance Cable Technologies Ltd. All Rights Reserved.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>`;
+
+  await transporter.sendMail({
+    from: process.env.EXP_HANDLE_USER_NAME || 'Advance Cable Technologies <tech@advancecable.in>',
+    to: recipients.join(', '),
+    subject,
+    html,
+    attachments: [
+      {
+        filename: fileName,
+        content: fileBase64,
+        encoding: 'base64',
+      },
+    ],
+  });
+}
+
+// Validates the recipient list + attachment payload shared by every "email this exported
+// sheet" action below. Returns either { recipients } on success, or { errorResponse } to
+// return as-is.
+function validateEmailReportRequest(body) {
+  const recipients = (Array.isArray(body.recipient_emails) ? body.recipient_emails : String(body.recipient_emails || '').split(/[,;]/))
+    .map((e) => String(e || '').trim())
+    .filter(Boolean);
+
+  if (!recipients.length) {
+    responseCodes.BAD_REQUEST.data = null;
+    responseCodes.BAD_REQUEST.message = "Enter at least one recipient email address.";
+    return { errorResponse: responseCodes.BAD_REQUEST };
+  }
+  const invalid = recipients.filter((e) => !EMAIL_RE.test(e));
+  if (invalid.length) {
+    responseCodes.BAD_REQUEST.data = null;
+    responseCodes.BAD_REQUEST.message = `Invalid email address: ${invalid.join(', ')}`;
+    return { errorResponse: responseCodes.BAD_REQUEST };
+  }
+  if (!body.file_base64) {
+    responseCodes.BAD_REQUEST.data = null;
+    responseCodes.BAD_REQUEST.message = "No file to email.";
+    return { errorResponse: responseCodes.BAD_REQUEST };
+  }
+  return { recipients };
+}
+
+// Emails an already-built Monthly Sheet workbook (generated client-side with SheetJS) to
+// whichever addresses HR typed into the export dialog. The workbook itself is not rebuilt
+// here - the frontend sends the exact same base64 .xlsx it would otherwise download, so what
+// gets emailed is guaranteed identical to what "Export" would have produced.
+exports.emailMonthlySheet = async function (body) {
+  try {
+    const { recipients, errorResponse } = validateEmailReportRequest(body);
+    if (errorResponse) return errorResponse;
+
+    const monthLabel = body.month_label || 'the selected period';
+    await sendReportEmail({
+      recipients,
+      fileName: body.file_name || 'Monthly_Sheet.xlsx',
+      fileBase64: body.file_base64,
+      subject: `Attendance Monthly Sheet — ${monthLabel}`,
+      heading: 'Attendance Monthly Sheet',
+      bodyHtml: `
+        <p style="font-size:16px;color:#333;margin-top:0;">Dear Team,</p>
+        <p style="font-size:15px;color:#555;line-height:26px;">Please find attached the <strong>Attendance Monthly Sheet</strong> for <strong>${monthLabel}</strong>, covering every employee's daily attendance status along with Working Days, Present Days and LOP Days for the period.</p>`,
+    });
+
+    responseCodes.SUCCESS.data = { sent_to: recipients };
+    responseCodes.SUCCESS.message = `Monthly Sheet emailed to ${recipients.join(', ')}`;
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to email Monthly Sheet";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+// Emails the Attendance tab's currently-filtered list (same rows "Excel"/"PDF" would have
+// exported) to whichever addresses HR types into the Email dialog.
+exports.emailAttendanceReport = async function (body) {
+  try {
+    const { recipients, errorResponse } = validateEmailReportRequest(body);
+    if (errorResponse) return errorResponse;
+
+    const rangeLabel = body.report_label || 'the selected range';
+    await sendReportEmail({
+      recipients,
+      fileName: body.file_name || 'Attendance_Report.xlsx',
+      fileBase64: body.file_base64,
+      subject: `Attendance Report — ${rangeLabel}`,
+      heading: 'Attendance Report',
+      bodyHtml: `
+        <p style="font-size:16px;color:#333;margin-top:0;">Dear Team,</p>
+        <p style="font-size:15px;color:#555;line-height:26px;">Please find attached the <strong>Attendance Report</strong> for <strong>${rangeLabel}</strong>.</p>`,
+    });
+
+    responseCodes.SUCCESS.data = { sent_to: recipients };
+    responseCodes.SUCCESS.message = `Attendance Report emailed to ${recipients.join(', ')}`;
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to email Attendance Report";
     return responseCodes.BAD_REQUEST;
   }
 };

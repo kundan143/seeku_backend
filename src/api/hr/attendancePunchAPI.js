@@ -34,6 +34,16 @@ router.post('/getMonthlySheet', async (req, res, next) => {
     return res.send(await OP_AttendancePunch.getMonthlySheet(req.body));
 });
 
+// 5d = Email an already-built Monthly Sheet workbook (as base64) to HR-entered addresses
+router.post('/emailMonthlySheet', async (req, res, next) => {
+    return res.send(await OP_AttendancePunch.emailMonthlySheet(req.body));
+});
+
+// 5e = Email the Attendance tab's currently-filtered list (as base64) to HR-entered addresses
+router.post('/emailAttendanceReport', async (req, res, next) => {
+    return res.send(await OP_AttendancePunch.emailAttendanceReport(req.body));
+});
+
 // 6 = All raw punches for one employee on one day (drill-down)
 router.post('/getRawPunches', async (req, res, next) => {
     return res.send(await OP_AttendancePunch.getRawPunchesByUserDate(req.body));
