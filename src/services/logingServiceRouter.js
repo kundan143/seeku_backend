@@ -11,7 +11,7 @@ const { responseCodes } = require("./baseReponse");
 const { sequelize } = require("../config/database-connection");
 const sendOtpMail = require("./sendOtpMail");
 const sendAccountLockedMail = require("./sendAccountLockedMail");
-const { usersMaster, systemConfig, roleMaster } = require("../models");
+const { usersMaster, systemConfig, roleMaster, clientBrandingMaster } = require("../models");
 const { recordLogin } = require("../operations/OP_UserActivityLog");
 
 const SALT_ROUNDS = 12;
@@ -161,6 +161,23 @@ routers.post("/user_login", async (req, res) => {
   } catch (e) {
     logger.error(`Unexpected error: ${e.message}`);
     return res.status(500).send(responseCodes.INTERNAL_SERVER_ERROR);
+  }
+});
+
+// Pre-auth: the login page has no JWT yet, so it can't hit the authenticated
+// /api/developerTools/clientBranding/getOneRow route the topbar uses post-login. Whitelists
+// just the two display fields the login page needs - never the full row (which also holds
+// support_email/support_phone/website, no reason to expose those before a user has signed in).
+routers.get("/public_branding", async (req, res) => {
+  try {
+    const branding = await clientBrandingMaster.findOne({
+      where: { id: 1 },
+      attributes: ["client_name", "client_logo"],
+    });
+    return res.status(200).json({ success: true, data: branding || {} });
+  } catch (error) {
+    logger.error(`public_branding error: ${error.message}`);
+    return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 
