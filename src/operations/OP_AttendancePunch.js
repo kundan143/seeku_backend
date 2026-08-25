@@ -293,6 +293,10 @@ exports.getAllSummary = async function (body) {
 // grace_period_minutes), then an approved regularization with no punch still counts as Present
 // (attendance was corrected even though nothing was actually punched), and anyone left over is
 // Absent.
+// Company-wide Present/Late/WFH/Absent counts for today. Sunday, a holiday, a not-yet-joined
+// employee, or an approved non-LOP leave are all neutral (excluded from every bucket, same as
+// getMyDashboardStats/getMonthlySheet) - otherwise every week-off/holiday would wrongly dump the
+// entire company into ABSENT. An approved LOP leave still counts as Absent.
 exports.getTodayStats = async function () {
   try {
     const query = `
@@ -304,7 +308,8 @@ exports.getTodayStats = async function () {
         limit 1
       ),
       active_employees as (
-        select id as user_id, concat(first_name, ' ', middle_name, ' ', last_name) as user_name
+        select id as user_id, concat(first_name, ' ', middle_name, ' ', last_name) as user_name,
+          to_char(doj, 'YYYY-MM-DD') as doj
         from users_master where status = true
       ),
       todays_wfh as (
@@ -320,9 +325,24 @@ exports.getTodayStats = async function () {
       todays_reg as (
         select distinct user_id from attendance_regularization
         where punch_date = current_date and status = 1 and is_deleted = 0
+      ),
+      todays_holiday as (
+        select 1 as is_holiday from holidays_master
+        where status = 1 and is_optional = false and holiday_date = current_date
+        limit 1
+      ),
+      todays_leave as (
+        select uld.user_id, ltm.leave_code
+        from users_leave_details uld
+        join leave_type_master ltm on ltm.id = uld.leave_type_id
+        where uld.status = 1 and uld.start_date <= current_date and uld.end_date >= current_date
       )
       select ae.user_id, ae.user_name,
         case
+          when ae.doj is not null and ae.doj > to_char(current_date, 'YYYY-MM-DD') then 'NEUTRAL'
+          when h.is_holiday is not null or extract(dow from current_date) = 0 then 'NEUTRAL'
+          when tl.leave_code is not null and upper(trim(tl.leave_code)) <> 'LOP' then 'NEUTRAL'
+          when tl.leave_code is not null then 'ABSENT'
           when wfh.user_id is not null then 'WFH'
           when tp.first_punch is not null and p.office_start_time is not null
             and tp.first_punch::time > (p.office_start_time + (coalesce(p.grace_period_minutes, 0) || ' minutes')::interval)
@@ -334,6 +354,8 @@ exports.getTodayStats = async function () {
       left join todays_wfh wfh on wfh.user_id = ae.user_id
       left join todays_punch tp on tp.user_id = ae.user_id
       left join todays_reg reg on reg.user_id = ae.user_id
+      left join todays_leave tl on tl.user_id = ae.user_id
+      left join todays_holiday h on true
       left join policy p on true
       order by ae.user_name asc;`;
     const rows = await sequelize.query(query, { type: QueryTypes.SELECT });

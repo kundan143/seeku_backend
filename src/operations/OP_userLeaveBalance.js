@@ -84,9 +84,10 @@ exports.getOneData = async function (id) {
                   from user_leave_balance ulb
                   join users_master um on um.id = ulb.user_id
                   join leave_type_master ltm on ltm.id = ulb.leave_type_id
-                  where ulb.status = 1 and ulb.user_id = ${id}
+                  where ulb.status = 1 and ulb.user_id = :id
                   order by ulb.id desc;`;
     const data = await sequelize.query(query, {
+      replacements: { id },
       type: QueryTypes.SELECT,
     });
     responseCodes.SUCCESS.data = data;
@@ -104,13 +105,14 @@ exports.getTotalRemainingLeave = async function (id) {
     const totalRemainingLeave = await userLeaveBalance.sum("remaining_days", {
       where: {
         user_id: id,
+        status: 1,
       },
     });
     responseCodes.SUCCESS.data = totalRemainingLeave;
 		responseCodes.SUCCESS.message = "";
 		return responseCodes.SUCCESS;
   } catch (error) {
-    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.data = error;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
   }
