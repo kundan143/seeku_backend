@@ -29,6 +29,11 @@ router.get('/getTodayStats', async (req, res, next) => {
     return res.send(await OP_AttendancePunch.getTodayStats());
 });
 
+// 5b2 = One employee's this-month Present/Absent/Late counts + today's punch status (dashboard hero stats)
+router.post('/getMyDashboardStats', async (req, res, next) => {
+    return res.send(await OP_AttendancePunch.getMyDashboardStats(req.body.user_id));
+});
+
 // 5c = Every employee x every day of a month, pre-classified into P/HD/WFH/A/'-' (Monthly Sheet)
 router.post('/getMonthlySheet', async (req, res, next) => {
     return res.send(await OP_AttendancePunch.getMonthlySheet(req.body));

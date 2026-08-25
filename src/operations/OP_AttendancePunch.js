@@ -356,6 +356,158 @@ exports.getTodayStats = async function () {
   }
 };
 
+// Dashboard hero stats for ONE employee: this-month Present/Absent/Late counts (as of today, not
+// the whole month - a future day with no punch yet must never count as Absent) plus today's own
+// punch-in status/time, all from a single query. Reuses the same day-classification building
+// blocks as getMonthlySheet (punches/regularization/WFH/holiday/leave joins) and the same
+// Late-cutoff check as getTodayStats (office_start_time + grace_period_minutes) - neither
+// existing endpoint alone covers a single user's month-to-date counts including Late, and
+// getMonthlySheet has no Late concept at all (only P/HD/WFH/A/HOL/PL/LOP).
+//
+// Present/Absent/Late here are simpler and mutually exclusive (no half-day hours math, no
+// sandwich-rule/payroll adjustments - that nuance stays exclusive to getMonthlySheet, which is
+// what payroll actually reads): Sunday/Holiday/Paid-Leave days are neutral (not counted either
+// way); WFH, an on-time punch, a late punch, or an approved regularization with no punch all
+// count as Present, with a late punch ALSO incrementing late_count; anything else on a working
+// day is Absent.
+exports.getMyDashboardStats = async function (user_id) {
+  try {
+    if (!user_id) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "user_id is required";
+      return responseCodes.BAD_REQUEST;
+    }
+
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth() + 1; // 1-12
+    const pad = (n) => String(n).padStart(2, '0');
+    const fromDate = `${year}-${pad(month)}-01`;
+    // Capped at today inside the query too (least(...)), but computing it here as well keeps the
+    // date-series bound obviously correct on its own rather than relying only on the inline cap.
+    const toDate = `${year}-${pad(month)}-${pad(today.getDate())}`;
+
+    const query = `
+      with policy as (
+        select office_start_time, grace_period_minutes
+        from attendance_policy
+        where is_deleted = 0 and effective_from <= current_date
+        order by effective_from desc, id desc
+        limit 1
+      ),
+      emp as (
+        select id as user_id, to_char(doj, 'YYYY-MM-DD') as doj
+        from users_master where id = :user_id
+      ),
+      days as (
+        select generate_series(:fromDate::date, least(:toDate::date, current_date), interval '1 day')::date as punch_date
+      ),
+      punch_summary as (
+        select punch_date, min(punch_time) as first_punch
+        from attendance_punches
+        where is_deleted = 0 and user_id = :user_id and punch_date between :fromDate and :toDate
+        group by punch_date
+      ),
+      reg_summary as (
+        select punch_date,
+          case when requested_in_time is not null then (punch_date + requested_in_time)::timestamp end as first_punch
+        from attendance_regularization
+        where status = 1 and is_deleted = 0 and user_id = :user_id and punch_date between :fromDate and :toDate
+      ),
+      wfh_summary as (
+        select wfh_date as punch_date from wfh_requests
+        where status = 1 and is_deleted = 0 and user_id = :user_id and wfh_date between :fromDate and :toDate
+      ),
+      holiday_days as (
+        select holiday_date as punch_date from holidays_master
+        where status = 1 and is_optional = false and holiday_date between :fromDate and :toDate
+      ),
+      leave_summary as (
+        select uld.start_date, uld.end_date, ltm.leave_code
+        from users_leave_details uld
+        join leave_type_master ltm on ltm.id = uld.leave_type_id
+        where uld.user_id = :user_id and uld.status = 1
+          and uld.start_date <= :toDate and uld.end_date >= :fromDate
+      )
+      select to_char(d.punch_date, 'YYYY-MM-DD') as punch_date,
+        coalesce(ps.first_punch, rs.first_punch) as first_punch,
+        (rs.punch_date is not null) as is_regularized,
+        (ws.punch_date is not null) as is_wfh,
+        (hd.punch_date is not null) as is_holiday,
+        (extract(dow from d.punch_date) = 0) as is_sunday,
+        ls.leave_code,
+        e.doj,
+        p.office_start_time,
+        p.grace_period_minutes
+      from days d
+      cross join emp e
+      left join punch_summary ps on ps.punch_date = d.punch_date
+      left join reg_summary rs on rs.punch_date = d.punch_date
+      left join wfh_summary ws on ws.punch_date = d.punch_date
+      left join holiday_days hd on hd.punch_date = d.punch_date
+      left join lateral (
+        select leave_code from leave_summary ls2
+        where d.punch_date between ls2.start_date and ls2.end_date
+        limit 1
+      ) ls on true
+      left join policy p on true
+      order by d.punch_date asc;`;
+
+    const rows = await sequelize.query(query, {
+      replacements: { user_id, fromDate, toDate },
+      type: QueryTypes.SELECT,
+    });
+
+    let present_count = 0, absent_count = 0, late_count = 0;
+    let todayRow = null;
+
+    rows.forEach((row) => {
+      if (row.punch_date === toDate) todayRow = row;
+
+      if (row.doj && row.punch_date < row.doj) return;              // not yet joined
+      if (row.is_holiday || row.is_sunday) return;                   // neutral
+      if (row.leave_code) {
+        if (String(row.leave_code).trim().toUpperCase() === 'LOP') absent_count++;
+        return; // any other leave type is paid/neutral, same as getMonthlySheet's PL handling
+      }
+
+      const late = !row.is_wfh && row.first_punch && row.office_start_time
+        && new Date(row.first_punch).toTimeString().slice(0, 8)
+           > addMinutesToTimeString(row.office_start_time, row.grace_period_minutes || 0);
+
+      if (row.is_wfh || row.first_punch || row.is_regularized) {
+        present_count++;
+        if (late) late_count++;
+      } else {
+        absent_count++;
+      }
+    });
+
+    const punch_in_time = todayRow?.first_punch || null;
+    const is_punched_in = !!(todayRow && (todayRow.first_punch || todayRow.is_wfh));
+
+    responseCodes.SUCCESS.data = { present_count, absent_count, late_count, is_punched_in, punch_in_time };
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Dashboard Attendance Stats";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+// "HH:MM:SS" + minutes -> "HH:MM:SS", for comparing a punch's time-of-day against
+// office_start_time + grace_period_minutes without a second round-trip to Postgres.
+function addMinutesToTimeString(timeStr, minutes) {
+  const [h, m, s] = timeStr.split(':').map(Number);
+  const total = h * 3600 + m * 60 + (s || 0) + minutes * 60;
+  const wrapped = ((total % 86400) + 86400) % 86400;
+  const hh = Math.floor(wrapped / 3600);
+  const mm = Math.floor((wrapped % 3600) / 60);
+  const ss = wrapped % 60;
+  return [hh, mm, ss].map((n) => String(n).padStart(2, '0')).join(':');
+}
+
 // Monthly Sheet: every active employee x every day of the given month, already classified into
 // P (Present) / HD (Half Day) / WFH / A (Absent) / '-' (week off or holiday), pivoted into
 // {days, rows} so the frontend can render it directly with no date/hours math of its own.
