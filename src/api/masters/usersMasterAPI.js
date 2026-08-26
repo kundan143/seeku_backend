@@ -11,6 +11,11 @@ router.post('/getAllRows', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.getAllData(req.body));
 });
 
+// 1b = Active employees whose birthday is today (breadcrumb "Happy Birthday" banner)
+router.get('/getTodaysBirthdays', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.getTodaysBirthdays());
+});
+
 // 2 = Add Row
 router.post('/addRow', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.addData(req.body));

@@ -472,6 +472,30 @@ exports.getAllData = async function (body) {
     return responseCodes.BAD_REQUEST;
   }
 };
+// Active employees whose birthday (month + day of dob) is today - used by the breadcrumb's
+// "Happy Birthday" banner, shown on every page, so this stays a cheap targeted query instead of
+// reusing getAllData's full active-user list + every join just to filter it down client-side.
+exports.getTodaysBirthdays = async function () {
+  try {
+    const query = `SELECT id, concat(first_name, ' ', last_name) as full_name, first_name
+      FROM users_master
+      WHERE account_block = false AND status = true AND dob IS NOT NULL
+        AND extract(month from dob) = extract(month from current_date)
+        AND extract(day from dob) = extract(day from current_date)
+      ORDER BY first_name ASC`;
+    const data = await sequelize.query(query, {
+      type: QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 exports.permissionUser = async function (body) {
   try {
     let status = ``;
