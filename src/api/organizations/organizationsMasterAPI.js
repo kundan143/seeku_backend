@@ -45,9 +45,11 @@ router.post("/getCategoryWiseOrgAllDetails", async (req, res, next) => {
   );
 });
 
-// 8 = Get Status Wise Org List
+// 8 = Get Status Wise Org List - non-Super Admins only see their own assigned organizations
 router.post("/getStatusWiseOrgList", async (req, res, next) => {
-  return res.send(await OP_OrganizationsMaster.getStatusWiseOrgList(req.body));
+  return res.send(
+    await OP_OrganizationsMaster.getStatusWiseOrgList(req.body, req.headers.userId)
+  );
 });
 
 // 9 = Update Org Status

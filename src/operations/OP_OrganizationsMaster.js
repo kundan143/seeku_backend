@@ -18,6 +18,7 @@ const { responseCodes } = require("../services/baseReponse");
 // const { sendNotification } = require("../services/notificationService");
 const { sequelize } = require("../config/database-connection");
 const { Op, QueryTypes } = require("sequelize");
+const { isSuperAdminUser } = require("../services/profileAccess");
 
 exports.addData = async function (body) {
   try {
@@ -279,12 +280,14 @@ exports.getCategoryWiseOrgAllDetails = async function (body) {
   }
 };
 
-exports.getStatusWiseOrgList = async function (body) {
+// Every non-Super Admin only sees organizations assigned to them as sales_zone_id ("their
+// organization[s]") - Super Admin sees everything. Decided from the JWT-verified requesterId
+// (req.headers.userId, set by jwtTokenValiadtion middleware), NOT the client-supplied
+// body.user_id, so a tampered request can't widen its own visibility.
+exports.getStatusWiseOrgList = async function (body, requesterId) {
   try {
-    let zoneWise = ``;
-    if (body.user_id != null && body.user_id != undefined) {
-      zoneWise = ` AND om.sales_zone_id = ` + body.user_id;
-    }
+    const isSuperAdmin = await isSuperAdminUser(requesterId);
+    const zoneWise = isSuperAdmin ? `` : ` AND om.sales_zone_id = :requesterId`;
 
     let query =
       `SELECT
@@ -320,19 +323,19 @@ exports.getStatusWiseOrgList = async function (body) {
 						LEFT JOIN city_master AS city ON city.id = oa.city_id
 						GROUP BY oa.org_id
 					) AS org_country ON org_country.org_id = om.id
-					WHERE om.status = ` +
-      body.status +
-      ` ${zoneWise}
+					WHERE om.status = :status
+					${zoneWise}
 					ORDER BY om.id DESC`;
 
     let data = await sequelize.query(query, {
+      replacements: { status: body.status, requesterId },
       type: QueryTypes.SELECT,
     });
     responseCodes.SUCCESS.data = data;
     responseCodes.SUCCESS.message = "";
     return responseCodes.SUCCESS;
   } catch (e) {
-    
+
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
     return responseCodes.BAD_REQUEST;
