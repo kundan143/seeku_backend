@@ -31,9 +31,17 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.DATEONLY,
       allowNull: false,
     },
+    // DB column is NUMERIC(5,2) (03_leave_type_master.sql, "supports half-day, quarter-day
+    // etc.") - was declared INTEGER here, which drifted from that and would coerce/truncate a
+    // half-day's 0.5 fraction.
     total_days: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
+    },
+    is_half_day: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     reason: {
       type: DataTypes.TEXT,

@@ -20,7 +20,9 @@ function parseLocalDate(dateStr) {
 // trusted from whichever of the several leave-apply UIs submitted the request) so every path -
 // HR direct-entry, the shared apply-leave dialog, My Profile's own form - agrees, and so
 // approvalUpdateData never has to re-derive it (and risk double-subtracting holidays) later.
-async function computeWorkingDaysCount(startDate, endDate, transaction) {
+// isHalfDay shaves 0.5 off the result - only meaningful (and only validated as such by the
+// callers below) for a single-day leave, so there's exactly one working day to halve.
+async function computeWorkingDaysCount(startDate, endDate, transaction, isHalfDay = false) {
   const holidaysCount = await holidaysMaster.count({
     where: {
       is_optional: false,
@@ -42,14 +44,46 @@ async function computeWorkingDaysCount(startDate, endDate, transaction) {
   }
 
   const totalCalendarDays = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
-  return Math.max(0, totalCalendarDays - sundaysCount - holidaysCount);
+  const workingDays = Math.max(0, totalCalendarDays - sundaysCount - holidaysCount);
+  return isHalfDay && workingDays > 0 ? workingDays - 0.5 : workingDays;
+}
+
+// True if this user already has an APPROVED leave (status = 1) whose [start_date, end_date]
+// overlaps the requested range - standard interval-overlap test: they overlap unless one range
+// ends before the other starts. excludeId skips the row being edited (updateData), so re-saving
+// an already-approved leave's own unrelated fields doesn't flag itself as a conflict.
+async function hasApprovedLeaveOverlap(userId, startDate, endDate, transaction, excludeId) {
+  const where = {
+    user_id: userId,
+    status: 1,
+    start_date: { [Op.lte]: endDate },
+    end_date: { [Op.gte]: startDate },
+  };
+  if (excludeId != null) {
+    where.id = { [Op.ne]: excludeId };
+  }
+  const count = await userLeavesDetails.count({ where, transaction });
+  return count > 0;
 }
 
 exports.addData = async function (body) {
   const t = await sequelize.transaction();
   try {
     if (body.data.start_date && body.data.end_date) {
-      body.data.total_days = await computeWorkingDaysCount(body.data.start_date, body.data.end_date, t);
+      const isHalfDay = !!body.data.is_half_day;
+      if (isHalfDay && body.data.start_date !== body.data.end_date) {
+        await t.rollback();
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "Half day only applies to a single-day leave - Start Date and End Date must match.";
+        return responseCodes.BAD_REQUEST;
+      }
+      if (await hasApprovedLeaveOverlap(body.data.user_id, body.data.start_date, body.data.end_date, t)) {
+        await t.rollback();
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "You already have an approved leave that overlaps these dates.";
+        return responseCodes.BAD_REQUEST;
+      }
+      body.data.total_days = await computeWorkingDaysCount(body.data.start_date, body.data.end_date, t, isHalfDay);
       if (body.data.total_days <= 0) {
         await t.rollback();
         responseCodes.BAD_REQUEST.data = null;
@@ -80,7 +114,20 @@ exports.updateData = async function (body) {
   const t = await sequelize.transaction();
   try {
     if (body.data.start_date && body.data.end_date) {
-      body.data.total_days = await computeWorkingDaysCount(body.data.start_date, body.data.end_date, t);
+      const isHalfDay = !!body.data.is_half_day;
+      if (isHalfDay && body.data.start_date !== body.data.end_date) {
+        await t.rollback();
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "Half day only applies to a single-day leave - Start Date and End Date must match.";
+        return responseCodes.BAD_REQUEST;
+      }
+      if (await hasApprovedLeaveOverlap(body.data.user_id, body.data.start_date, body.data.end_date, t, body.id)) {
+        await t.rollback();
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "You already have an approved leave that overlaps these dates.";
+        return responseCodes.BAD_REQUEST;
+      }
+      body.data.total_days = await computeWorkingDaysCount(body.data.start_date, body.data.end_date, t, isHalfDay);
       if (body.data.total_days <= 0) {
         await t.rollback();
         responseCodes.BAD_REQUEST.data = null;
@@ -276,9 +323,10 @@ exports.getOneData = async function (id) {
                 LEFT JOIN users_master cu ON cu.id = uld.created_by
                 LEFT JOIN users_master au ON au.id = uld.approved_by
                 LEFT JOIN users_master ru ON ru.id = uld.rejected_by
-                WHERE uld.status != 3 AND uld.user_id = ${id}
+                WHERE uld.status != 3 AND uld.user_id = :id
                 ORDER BY uld.id DESC;`;
     const data = await sequelize.query(query, {
+      replacements: { id },
       type: sequelize.QueryTypes.SELECT,
     });
     responseCodes.SUCCESS.data = data;
