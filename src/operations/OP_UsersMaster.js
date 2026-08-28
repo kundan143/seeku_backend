@@ -425,6 +425,49 @@ exports.updatePassword = async function (body) {
   }
 };
 
+// Manual lock/unlock from the Employee Master action icon - the same account_block column
+// login already checks (logingServiceRouter.js: `if (user.account_block) return res.status(403)
+// ...`), previously only ever set automatically after repeated failed login attempts. Guarded
+// the same way as a role change (guardSuperAdminRoleChange): can't lock your own account (no
+// self-service unlock exists for this flag, unlike must_change_password), and only a Super
+// Admin may lock another Super Admin's account.
+exports.updateAccountBlock = async function (body, requesterId) {
+  try {
+    if (String(body.id) === String(requesterId)) {
+      responseCodes.FORBIDDEN.data = null;
+      responseCodes.FORBIDDEN.message = "You cannot lock your own account.";
+      return responseCodes.FORBIDDEN;
+    }
+
+    const isBlocking = !!body.data.account_block;
+    if (isBlocking && !(await isSuperAdminUser(requesterId))) {
+      const target = await usersMaster.findByPk(body.id, { attributes: ["role_id"] });
+      if (target?.role_id && (await isSuperAdminRole(target.role_id))) {
+        responseCodes.FORBIDDEN.data = null;
+        responseCodes.FORBIDDEN.message = "Only a Super Admin can lock a Super Admin's account.";
+        return responseCodes.FORBIDDEN;
+      }
+    }
+
+    await usersMaster.update(
+      {
+        account_block: isBlocking,
+        modified_by: body.data.modified_by,
+        modified_date: body.data.modified_date,
+      },
+      { where: { id: body.id } }
+    );
+
+    responseCodes.SUCCESS.data = null;
+    responseCodes.SUCCESS.message = isBlocking ? "Account locked." : "Account unlocked.";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to update account lock status";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 exports.deleteData = async function (body) {
   try {
     if (!body?.id) {

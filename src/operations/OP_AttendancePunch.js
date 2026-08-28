@@ -535,7 +535,7 @@ function addMinutesToTimeString(timeStr, minutes) {
 // {days, rows} so the frontend can render it directly with no date/hours math of its own.
 // Priority per day: week off/holiday > WFH > a real punch (hours-based) > approved
 // regularization with no punch time (counts as Present) > nothing at all (Absent).
-// 2nd/4th Saturdays are half working days - the Present threshold drops from 8 hrs to 4 hrs.
+// 2nd/4th/5th Saturdays are half working days - the Present threshold drops from 8 hrs to 4 hrs.
 exports.getMonthlySheet = async function (body) {
   try {
     const year = Number(body.year);
@@ -642,7 +642,7 @@ exports.getMonthlySheet = async function (body) {
         return false;
       }
       const occurrence = Math.ceil(dd / 7);
-      return occurrence === 2 || occurrence === 4;
+      return occurrence === 2 || occurrence === 4 || occurrence === 5;
     };
 
     const computeStatus = (row) => {

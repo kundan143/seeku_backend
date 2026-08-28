@@ -25,7 +25,7 @@ const jobs = [
     // is idempotent: re-checking/re-flagging already-stale passwords on a redundant run is a
     // no-op, not a double-charge), and it's what makes this job easy to test without waiting
     // for 00:10 AM - just restart the backend.
-    runOnStart: true,
+    // runOnStart: true,
   },
 ];
 

@@ -77,6 +77,9 @@ router.post('/updatePassword', async (req, res, next) => {
 router.post('/sendCredentialsMail', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.sendCredentialsMail(req.body));
 });
+router.post('/updateAccountBlock', async (req, res, next) => {
+	return res.send(await OP_UsersMaster.updateAccountBlock(req.body, req.headers.userId));
+});
 router.post('/permissionUser', async (req, res, next) => {
 	return res.send(await OP_UsersMaster.permissionUser(req.body));
 });
