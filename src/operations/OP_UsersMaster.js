@@ -395,6 +395,15 @@ exports.assignRole = async function (body, requesterId) {
 exports.updatePassword = async function (body) {
   try {
     if (body.data.password != null) {
+      const existing = await usersMaster.findByPk(body.id, { attributes: ["password"] });
+      const samePassword = existing?.password
+        && (await bcrypt.compare(body.data.password, existing.password));
+      if (samePassword) {
+        responseCodes.BAD_REQUEST.data = null;
+        responseCodes.BAD_REQUEST.message = "New password must be different from your current password.";
+        return responseCodes.BAD_REQUEST;
+      }
+
       body.data.password = await bcrypt.hash(body.data.password, saltRounds);
       body.data.must_change_password = false;
       body.data.last_password_modified = new Date();

@@ -13,6 +13,7 @@ const sendOtpMail = require("./sendOtpMail");
 const sendAccountLockedMail = require("./sendAccountLockedMail");
 const { usersMaster, systemConfig, roleMaster, clientBrandingMaster } = require("../models");
 const { recordLogin } = require("../operations/OP_UserActivityLog");
+const { PASSWORD_MAX_AGE_DAYS, PASSWORD_EXPIRY_REMINDER_DAYS } = require("./passwordPolicy");
 
 const SALT_ROUNDS = 12;
 const OTP_EXPIRY_MINUTES = 15;
@@ -102,6 +103,23 @@ routers.post("/user_login", async (req, res) => {
           // Role Master is even shown, so a non-super-admin can't see the option exists.
           const userDetPayload = resUsersMaster.map((u) => u.get({ plain: true }));
           userDetPayload[0].is_super_admin = isSuperAdmin;
+
+          // Password-expiry reminder - null unless the password will expire within the next
+          // PASSWORD_EXPIRY_REMINDER_DAYS days (cron/jobs/enforcePasswordExpiry.js flips
+          // must_change_password once it actually hits PASSWORD_MAX_AGE_DAYS old, which already
+          // blocks the dashboard redirect on its own - if that's already true there's nothing
+          // to warn about, they're already in that flow). Computed here, not on the frontend, so
+          // the policy's day counts stay defined in exactly one place (passwordPolicy.js).
+          userDetPayload[0].password_expires_in_days = null;
+          if (!user.must_change_password && user.last_password_modified) {
+            const ageDays = Math.floor(
+              (Date.now() - new Date(user.last_password_modified).getTime()) / 86400000
+            );
+            const daysLeft = PASSWORD_MAX_AGE_DAYS - ageDays;
+            if (daysLeft > 0 && daysLeft <= PASSWORD_EXPIRY_REMINDER_DAYS) {
+              userDetPayload[0].password_expires_in_days = daysLeft;
+            }
+          }
 
           var finalData = {
             userDet: userDetPayload,
