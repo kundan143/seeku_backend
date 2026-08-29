@@ -36,6 +36,11 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: true,
       defaultValue: 0,
     },
+    is_unpaid: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     status: {
       type: DataTypes.INTEGER,
       allowNull: true,

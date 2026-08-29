@@ -54,6 +54,11 @@ module.exports = function (sequelize, DataTypes) {
       type: DataTypes.ARRAY(DataTypes.TEXT),
       allowNull: true
     },
+    saturday_alternate_treatment: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'OFF'
+    },
     sunday_policy: {
       type: DataTypes.STRING(20),
       allowNull: false,

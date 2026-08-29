@@ -72,6 +72,27 @@ exports.getAllData = async function () {
     }
 };
 
+// Every leave type regardless of status - getAllData() above is deliberately active-only (it
+// feeds the leave-application dropdowns in apply-leave-dialog.component.ts and
+// attendance-punch.component.ts, which must never offer a retired leave type), so the admin
+// screen that needs to see/edit/reactivate everything needs its own, unfiltered endpoint.
+exports.getAllForAdmin = async function () {
+    try {
+        var data = await leaveTypeMaster.findAll({
+            order: [
+                ['id', 'ASC']
+            ]
+        });
+        responseCodes.SUCCESS.data = data;
+        responseCodes.SUCCESS.message = "Leave Types Loaded Successfully";
+        return responseCodes.SUCCESS;
+    } catch (e) {
+        responseCodes.BAD_REQUEST.data = e;
+        responseCodes.BAD_REQUEST.message = "Failed to Load Leave Types";
+        return responseCodes.BAD_REQUEST;
+    }
+};
+
 exports.getOneData = async function (id) {
     try {
         var data = await leaveTypeMaster.findAll({

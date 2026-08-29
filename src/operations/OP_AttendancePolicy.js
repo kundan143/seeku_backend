@@ -16,9 +16,10 @@ exports.addData = async function (body) {
   }
 };
 
-// Only a policy version that hasn't taken effect yet may be edited in place.
-// A policy already in effect (or in the past) must be superseded by a new version instead,
-// so historical attendance is never reinterpreted by a later edit.
+// Editable regardless of effective_from (including the currently-active or a past policy) - by
+// explicit choice, accepting that re-viewing a past month's attendance/payroll after this edit
+// will recompute under the edited rule (getMonthlySheet/getTodayStats always pick "whichever
+// policy's effective_from is the latest that's <= that day" fresh on every read, not a snapshot).
 exports.updateData = async function (body) {
   try {
     const existing = await attendancePolicy.findByPk(body.id);
@@ -26,12 +27,6 @@ exports.updateData = async function (body) {
       responseCodes.NOT_FOUND.data = null;
       responseCodes.NOT_FOUND.message = "Policy Not Found";
       return responseCodes.NOT_FOUND;
-    }
-    const today = new Date().toISOString().slice(0, 10);
-    if (existing.effective_from <= today) {
-      responseCodes.BAD_REQUEST.data = null;
-      responseCodes.BAD_REQUEST.message = "This policy is already in effect and cannot be edited - add a new policy version instead.";
-      return responseCodes.BAD_REQUEST;
     }
     await attendancePolicy.update(body.data, { where: { id: body.id } });
     responseCodes.SUCCESS.data = body.id;
@@ -44,6 +39,8 @@ exports.updateData = async function (body) {
   }
 };
 
+// Soft-delete (is_deleted flag, set by the caller in body.data) - same "any policy, including the
+// currently-active one" scope as updateData above.
 exports.deleteData = async function (body) {
   try {
     const existing = await attendancePolicy.findByPk(body.id);
@@ -51,12 +48,6 @@ exports.deleteData = async function (body) {
       responseCodes.NOT_FOUND.data = null;
       responseCodes.NOT_FOUND.message = "Policy Not Found";
       return responseCodes.NOT_FOUND;
-    }
-    const today = new Date().toISOString().slice(0, 10);
-    if (existing.effective_from <= today) {
-      responseCodes.BAD_REQUEST.data = null;
-      responseCodes.BAD_REQUEST.message = "This policy is already in effect and cannot be deleted - add a new policy version instead.";
-      return responseCodes.BAD_REQUEST;
     }
     await attendancePolicy.update(body.data, { where: { id: body.id } });
     responseCodes.SUCCESS.data = null;

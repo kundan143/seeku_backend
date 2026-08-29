@@ -9,6 +9,11 @@ router.get('/getAllRows', async (req, res, next) => {
     return res.send(await OP_leaveTypeMaster.getAllData());
 });
 
+// 1b = Get All Rows, including inactive - for the admin screen only, never the leave-application dropdowns
+router.get('/getAllForAdmin', async (req, res, next) => {
+    return res.send(await OP_leaveTypeMaster.getAllForAdmin());
+});
+
 // 2 = Add Row
 router.post('/addRow', async (req, res, next) => {
     return res.send(await OP_leaveTypeMaster.addData(req.body));

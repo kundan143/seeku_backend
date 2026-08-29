@@ -317,7 +317,7 @@ async function computeTodayStats() {
   try {
     const query = `
       with policy as (
-        select office_start_time, grace_period_minutes
+        select office_start_time, grace_period_minutes, saturday_policy, saturday_alternate_weeks, saturday_alternate_treatment
         from attendance_policy
         where is_deleted = 0 and effective_from <= current_date
         order by effective_from desc, id desc
@@ -348,7 +348,7 @@ async function computeTodayStats() {
         limit 1
       ),
       todays_leave as (
-        select uld.user_id, ltm.leave_code
+        select uld.user_id, ltm.leave_code, ltm.is_unpaid
         from users_leave_details uld
         join leave_type_master ltm on ltm.id = uld.leave_type_id
         where uld.status = 1 and uld.start_date <= current_date and uld.end_date >= current_date
@@ -357,7 +357,12 @@ async function computeTodayStats() {
         case
           when ae.doj is not null and ae.doj > to_char(current_date, 'YYYY-MM-DD') then 'NEUTRAL'
           when h.is_holiday is not null or extract(dow from current_date) = 0 then 'NEUTRAL'
-          when tl.leave_code is not null and upper(trim(tl.leave_code)) <> 'LOP' then 'NEUTRAL'
+          when extract(dow from current_date) = 6 and (
+            p.saturday_policy = 'OFF'
+            or (p.saturday_policy = 'ALTERNATE' and p.saturday_alternate_treatment = 'OFF'
+                and p.saturday_alternate_weeks @> ARRAY[ceil(extract(day from current_date) / 7)::text])
+          ) then 'NEUTRAL'
+          when tl.leave_code is not null and not tl.is_unpaid then 'NEUTRAL'
           when tl.leave_code is not null then 'ABSENT'
           when wfh.user_id is not null then 'WFH'
           when tp.first_punch is not null and p.office_start_time is not null
@@ -427,7 +432,7 @@ exports.getMyDashboardStats = async function (user_id) {
 
     const query = `
       with policy as (
-        select office_start_time, grace_period_minutes
+        select office_start_time, grace_period_minutes, saturday_policy, saturday_alternate_weeks, saturday_alternate_treatment
         from attendance_policy
         where is_deleted = 0 and effective_from <= current_date
         order by effective_from desc, id desc
@@ -461,7 +466,7 @@ exports.getMyDashboardStats = async function (user_id) {
         where status = 1 and is_optional = false and holiday_date between :fromDate and :toDate
       ),
       leave_summary as (
-        select uld.start_date, uld.end_date, ltm.leave_code
+        select uld.start_date, uld.end_date, ltm.leave_code, ltm.is_unpaid
         from users_leave_details uld
         join leave_type_master ltm on ltm.id = uld.leave_type_id
         where uld.user_id = :user_id and uld.status = 1
@@ -473,7 +478,12 @@ exports.getMyDashboardStats = async function (user_id) {
         (ws.punch_date is not null) as is_wfh,
         (hd.punch_date is not null) as is_holiday,
         (extract(dow from d.punch_date) = 0) as is_sunday,
+        (extract(dow from d.punch_date) = 6) as is_saturday,
+        p.saturday_policy,
+        p.saturday_alternate_weeks,
+        p.saturday_alternate_treatment,
         ls.leave_code,
+        ls.is_unpaid as leave_is_unpaid,
         e.doj,
         p.office_start_time,
         p.grace_period_minutes
@@ -484,7 +494,7 @@ exports.getMyDashboardStats = async function (user_id) {
       left join wfh_summary ws on ws.punch_date = d.punch_date
       left join holiday_days hd on hd.punch_date = d.punch_date
       left join lateral (
-        select leave_code from leave_summary ls2
+        select leave_code, is_unpaid from leave_summary ls2
         where d.punch_date between ls2.start_date and ls2.end_date
         limit 1
       ) ls on true
@@ -503,9 +513,10 @@ exports.getMyDashboardStats = async function (user_id) {
       if (row.punch_date === toDate) todayRow = row;
 
       if (row.doj && row.punch_date < row.doj) return;              // not yet joined
-      if (row.is_holiday || row.is_sunday) return;                   // neutral
+      const isSaturdayOff = row.is_saturday && classifySaturday(row.punch_date, row) === 'OFF';
+      if (row.is_holiday || row.is_sunday || isSaturdayOff) return;   // neutral
       if (row.leave_code) {
-        if (String(row.leave_code).trim().toUpperCase() === 'LOP') absent_count++;
+        if (row.leave_is_unpaid) absent_count++;
         return; // any other leave type is paid/neutral, same as getMonthlySheet's PL handling
       }
 
@@ -546,12 +557,37 @@ function addMinutesToTimeString(timeStr, minutes) {
   return [hh, mm, ss].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
+// Classifies a Saturday under the effective attendance_policy row's saturday_policy setting -
+// 'OFF' | 'HALF_DAY' | 'FULL_DAY' uniformly, or per-occurrence under 'ALTERNATE': the week-of-month
+// numbers (1-5) in saturday_alternate_weeks (the attendance-settings screen's "Off Saturdays"
+// picker) get whatever saturday_alternate_treatment says (OFF or HALF_DAY), every other Saturday
+// that month is a regular FULL_DAY. Returns null for any non-Saturday date, or when no policy is
+// configured yet - Saturday then behaves as an ordinary full working day, matching this app's
+// original hardcoded default before policies existed.
+function classifySaturday(dateStr, policy) {
+  const [y, m, dd] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, dd);
+  if (date.getDay() !== 6 || !policy?.saturday_policy) {
+    return null;
+  }
+  if (policy.saturday_policy === 'ALTERNATE') {
+    const occurrence = Math.ceil(dd / 7);
+    const pickedWeeks = (policy.saturday_alternate_weeks || []).map(Number);
+    if (!pickedWeeks.includes(occurrence)) {
+      return 'FULL_DAY';
+    }
+    return policy.saturday_alternate_treatment === 'HALF_DAY' ? 'HALF_DAY' : 'OFF';
+  }
+  return policy.saturday_policy;
+}
+
 // Monthly Sheet: every active employee x every day of the given month, already classified into
 // P (Present) / HD (Half Day) / WFH / A (Absent) / '-' (week off or holiday), pivoted into
 // {days, rows} so the frontend can render it directly with no date/hours math of its own.
 // Priority per day: week off/holiday > WFH > a real punch (hours-based) > approved
 // regularization with no punch time (counts as Present) > nothing at all (Absent).
-// 2nd/4th/5th Saturdays are half working days - the Present threshold drops from 8 hrs to 4 hrs.
+// Saturday treatment (off/half/full day, and which occurrences count as half under ALTERNATE)
+// comes from the currently-effective attendance_policy row - see classifySaturday().
 exports.getMonthlySheet = async function (body) {
   try {
     const year = Number(body.year);
@@ -560,6 +596,16 @@ exports.getMonthlySheet = async function (body) {
     const pad = (n) => String(n).padStart(2, '0');
     const fromDate = `${year}-${pad(month)}-01`;
     const toDate = `${year}-${pad(month)}-${pad(daysInMonth)}`;
+
+    const policyRows = await sequelize.query(
+      `select saturday_policy, saturday_alternate_weeks, saturday_alternate_treatment, half_day_threshold_hours, min_hours_full_day
+       from attendance_policy
+       where is_deleted = 0 and effective_from <= current_date
+       order by effective_from desc, id desc
+       limit 1`,
+      { type: QueryTypes.SELECT }
+    );
+    const policy = policyRows[0] || null;
 
     const query = `with days as (
                       select generate_series(:fromDate::date, :toDate::date, interval '1 day')::date as punch_date
@@ -607,7 +653,7 @@ exports.getMonthlySheet = async function (body) {
                       where status = 1 and is_optional = false and holiday_date between :fromDate and :toDate
                     ),
                     leave_summary as (
-                      select uld.user_id, uld.start_date, uld.end_date, ltm.leave_code
+                      select uld.user_id, uld.start_date, uld.end_date, ltm.leave_code, ltm.is_unpaid
                       from users_leave_details uld
                       join leave_type_master ltm on ltm.id = uld.leave_type_id
                       where uld.status = 1
@@ -626,7 +672,8 @@ exports.getMonthlySheet = async function (body) {
                       (ws.punch_date is not null) as is_wfh,
                       (hd.punch_date is not null) as is_holiday,
                       (extract(dow from d.punch_date) = 0) as is_sunday,
-                      ls.leave_code
+                      ls.leave_code,
+                      ls.is_unpaid as leave_is_unpaid
                     from days d
                     cross join relevant_employees e
                     left join punch_summary ps on ps.user_id = e.user_id and ps.punch_date = d.punch_date
@@ -634,7 +681,7 @@ exports.getMonthlySheet = async function (body) {
                     left join wfh_summary ws on ws.user_id = e.user_id and ws.punch_date = d.punch_date
                     left join holiday_days hd on hd.punch_date = d.punch_date
                     left join lateral (
-                      select leave_code from leave_summary ls2
+                      select leave_code, is_unpaid from leave_summary ls2
                       where ls2.user_id = e.user_id and d.punch_date between ls2.start_date and ls2.end_date
                       limit 1
                     ) ls on true
@@ -651,16 +698,6 @@ exports.getMonthlySheet = async function (body) {
       });
     }
 
-    const isHalfDaySaturday = (dateStr) => {
-      const [y, m, dd] = dateStr.split('-').map(Number);
-      const date = new Date(y, m - 1, dd);
-      if (date.getDay() !== 6) {
-        return false;
-      }
-      const occurrence = Math.ceil(dd / 7);
-      return occurrence === 2 || occurrence === 4 || occurrence === 5;
-    };
-
     const computeStatus = (row) => {
       if (row.doj && row.punch_date < row.doj) {
         return { code: '-', cls: 'off', title: 'Not Yet Joined' };
@@ -671,13 +708,17 @@ exports.getMonthlySheet = async function (body) {
       if (row.is_sunday) {
         return { code: '-', cls: 'off', title: 'Week Off' };
       }
+      const saturdayClass = classifySaturday(row.punch_date, policy);
+      if (saturdayClass === 'OFF') {
+        return { code: '-', cls: 'off', title: 'Week Off (Saturday)' };
+      }
       // An approved leave application covering this day is authoritative over any incidental
       // punch/WFH record - it deducted from user_leave_balance (see OP_usersLeave.approvalUpdateData,
       // which already refuses to approve a leave the balance can't cover), so it's a Paid Leave
-      // day, not Absent/LOP. The one exception is the "LOP" leave type itself (leave_code = 'LOP'),
-      // which by definition is an unpaid leave application - that stays a LOP day.
+      // day, not Absent/LOP. The one exception is a leave type flagged is_unpaid on
+      // leave_type_master (editable from the new Leave Type Master screen) - that stays a LOP day.
       if (row.leave_code) {
-        return String(row.leave_code).trim().toUpperCase() === 'LOP'
+        return row.leave_is_unpaid
           ? { code: 'LOP', cls: 'a', title: 'Leave (Loss of Pay)' }
           : { code: 'PL', cls: 'pl', title: 'Paid Leave' };
       }
@@ -686,7 +727,9 @@ exports.getMonthlySheet = async function (body) {
       }
       if (row.first_punch && row.last_punch) {
         const hours = (new Date(row.last_punch).getTime() - new Date(row.first_punch).getTime()) / 3600000;
-        const threshold = isHalfDaySaturday(row.punch_date) ? 4 : 8;
+        const threshold = saturdayClass === 'HALF_DAY'
+          ? Number(policy?.half_day_threshold_hours ?? 4)
+          : Number(policy?.min_hours_full_day ?? 8);
         return hours >= threshold
           ? { code: 'P', cls: 'p', title: `Present (${hours.toFixed(1)} hrs)` }
           : { code: 'HD', cls: 'hd', title: `Half Day (${hours.toFixed(1)} hrs)` };
@@ -698,22 +741,26 @@ exports.getMonthlySheet = async function (body) {
     };
 
     const rowsByUser = new Map();
-    const dayFlagsByDate = new Map(); // dateStr -> { is_holiday, is_sunday } - same for every employee
+    const dayFlagsByDate = new Map(); // dateStr -> { is_holiday, is_sunday, is_saturday_off } - same for every employee
     rows.forEach((r) => {
       if (!rowsByUser.has(r.user_id)) {
         rowsByUser.set(r.user_id, { user_id: r.user_id, user_name: r.user_name, doj: r.doj, cells: {} });
       }
       rowsByUser.get(r.user_id).cells[r.punch_date] = computeStatus(r);
       if (!dayFlagsByDate.has(r.punch_date)) {
-        dayFlagsByDate.set(r.punch_date, { is_holiday: r.is_holiday, is_sunday: r.is_sunday });
+        dayFlagsByDate.set(r.punch_date, {
+          is_holiday: r.is_holiday,
+          is_sunday: r.is_sunday,
+          is_saturday_off: classifySaturday(r.punch_date, policy) === 'OFF',
+        });
       }
     });
 
     // Matches OP_salaryPayment.getMonthWorkingDays exactly, so this sheet's Working/Present/LOP
     // columns agree with what payroll will actually calculate for the same month: every month is
-    // treated as exactly 30 days (day 31, if any, is dropped), and Sunday is normally a paid
-    // weekly off (stays part of the 30, always counts as present) with a holiday normally
-    // excluded from the working-day count entirely.
+    // treated as exactly 30 days (day 31, if any, is dropped), and Sunday - plus any Saturday the
+    // effective attendance_policy marks OFF - is normally a paid weekly off (stays part of the 30,
+    // always counts as present) with a holiday normally excluded from the working-day count entirely.
     //
     // Sandwich rule: if the employee has ANY Absent day anywhere that month, every Sunday and
     // Holiday that month loses its paid/neutral treatment too - each becomes a counted working
@@ -737,7 +784,7 @@ exports.getMonthlySheet = async function (body) {
           continue;
         }
         const flags = dayFlagsByDate.get(dateStr);
-        if (flags?.is_sunday) {
+        if (flags?.is_sunday || flags?.is_saturday_off) {
           workingDays++;
           if (!hasAnyAbsent) {
             presentDays += 1;
