@@ -2,14 +2,9 @@ const { userActivityLog } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { QueryTypes } = require("sequelize");
+const clientIp = require("../services/clientIp");
 
 const SENSITIVE_KEYS = ["password", "confirm_password", "old_password", "new_password", "token", "userdettoken", "otp", "reset_otp"];
-
-function clientIp(req) {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return req.socket?.remoteAddress || null;
-}
 
 function sanitizeBody(body) {
   if (!body || typeof body !== "object" || !Object.keys(body).length) return null;

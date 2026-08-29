@@ -6,6 +6,7 @@ const jwtTokenValiadtion = require("./services/jwtTokenValiadtion");
 const cors = require("cors");
 const logger = require("./services/dailyLogService");
 const { runMigrations } = require("./services/migrationService");
+const { connectRedis } = require("./services/redisClient");
 const { startCronJobs } = require("./cron");
 require("dotenv").config();
 const app = express();
@@ -25,6 +26,8 @@ const startServer = async () => {
     logger.error(e, "MIGRATION_ERROR");
     process.exit(1);
   }
+
+  await connectRedis();
 
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ extended: true, limit: "100mb" }));

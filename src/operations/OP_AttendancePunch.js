@@ -3,6 +3,7 @@ const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { QueryTypes } = require("sequelize");
 const transporter = require("../services/mailTransporterService");
+const { getOrSetCache, cacheDel } = require("../services/redisClient");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -298,6 +299,21 @@ exports.getAllSummary = async function (body) {
 // getMyDashboardStats/getMonthlySheet) - otherwise every week-off/holiday would wrongly dump the
 // entire company into ABSENT. An approved LOP leave still counts as Absent.
 exports.getTodayStats = async function () {
+  try {
+    // Identical result for every caller at a given moment (no user-specific filter), and this is
+    // the attendance dashboard card every user's dashboard hits - a prime cache-aside candidate.
+    // 60s TTL keeps it fresh enough to reflect punches/leave approvals without re-running the
+    // full company-wide join on every single dashboard load.
+    const todayKey = `today-stats:${new Date().toISOString().slice(0, 10)}`;
+    return await getOrSetCache(todayKey, 60, () => computeTodayStats());
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Today's Attendance Stats";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+async function computeTodayStats() {
   try {
     const query = `
       with policy as (

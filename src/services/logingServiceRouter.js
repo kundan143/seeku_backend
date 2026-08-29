@@ -14,6 +14,15 @@ const sendAccountLockedMail = require("./sendAccountLockedMail");
 const { usersMaster, systemConfig, roleMaster, clientBrandingMaster } = require("../models");
 const { recordLogin } = require("../operations/OP_UserActivityLog");
 const { PASSWORD_MAX_AGE_DAYS, PASSWORD_EXPIRY_REMINDER_DAYS } = require("./passwordPolicy");
+const clientIp = require("./clientIp");
+const {
+  blockUser,
+  unblockUser,
+  revokeToken,
+  checkLoginRateLimit,
+  recordLoginFailure,
+  resetLoginRateLimit,
+} = require("./sessionSecurity");
 
 const SALT_ROUNDS = 12;
 const OTP_EXPIRY_MINUTES = 15;
@@ -23,6 +32,20 @@ routers.post("/user_login", async (req, res) => {
     if (req.body && req.body.email && req.body.password) {
       let email = req.body.email;
       let password = req.body.password;
+
+      // Per-IP throttle, separate from the per-account lock below (which only protects one known
+      // account) - catches spraying many different/guessed emails from one source. Reads
+      // X-Forwarded-For directly (see clientIp.js) rather than Express's req.ip, which - without
+      // app.set('trust proxy', ...) - would just be the reverse proxy's own address for every
+      // request behind one.
+      const loginIp = clientIp(req);
+      const rateLimit = await checkLoginRateLimit(loginIp);
+      if (!rateLimit.allowed) {
+        return res.status(429).send({
+          message: `Too many login attempts. Please try again in ${Math.ceil(rateLimit.retryAfterSeconds / 60)} minute(s).`,
+        });
+      }
+
       let resUsersMaster = await usersMaster.findAll({
         where: {
           [Sequelize.Op.or]: [{ email: email }, { emp_code: email }],
@@ -133,6 +156,7 @@ routers.post("/user_login", async (req, res) => {
             expiresIn: "10h",
           });
           finalData.userDettoken = tokenUser;
+          await resetLoginRateLimit(loginIp);
           try {
             await recordLogin(req, user.id);
           } catch (e) {
@@ -143,12 +167,14 @@ routers.post("/user_login", async (req, res) => {
           // Admin password also failed — increment incorrect_password_attempts
           let attempts = user.incorrect_password_attempts + 1;
           let updateData = { incorrect_password_attempts: attempts };
+          await recordLoginFailure(loginIp);
 
           // Lock account if attempts >= 3
           if (attempts >= 3) {
             updateData.account_block = true;
             logger.warn(`Account locked for user: ${email} after 3 failed attempts.`);
             await usersMaster.update(updateData, { where: { id: user.id } });
+            await blockUser(user.id);
 
             try {
               await sendAccountLockedMail(user, attempts);
@@ -167,6 +193,7 @@ routers.post("/user_login", async (req, res) => {
         }
       } else {
         logger.warn(`User not found: ${email}`);
+        await recordLoginFailure(loginIp);
         return res.status(404).send({
           ...responseCodes.NOT_FOUND,
           message: `User not found: ${email}`,
@@ -180,6 +207,24 @@ routers.post("/user_login", async (req, res) => {
     logger.error(`Unexpected error: ${e.message}`);
     return res.status(500).send(responseCodes.INTERNAL_SERVER_ERROR);
   }
+});
+
+// Not behind jwtTokenValiadtion (logout must work even against an expired/near-expired token) -
+// verifies the token itself. Revokes it into Redis for the rest of its natural life so it can't be
+// reused (e.g. replayed from a stolen copy) after the user has explicitly logged out, closing the
+// other half of the gap alongside the account-lock check in jwtTokenValiadtion.js.
+routers.post("/logout", async (req, res) => {
+  const token = req.headers.webtoken;
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.SECRET_KEY);
+      const remainingSeconds = decoded.exp - Math.floor(Date.now() / 1000);
+      await revokeToken(token, remainingSeconds);
+    } catch (e) {
+      // Already invalid/expired - nothing left to revoke.
+    }
+  }
+  return res.status(200).send({ code: "100", message: "Logged out." });
 });
 
 // Pre-auth: the login page has no JWT yet, so it can't hit the authenticated
@@ -273,6 +318,7 @@ routers.post("/forgot_password", async (req, res) => {
       },
       { where: { id: data.id } }
     );
+    await unblockUser(data.id);
 
     logger.info(`Password reset successful for: ${email}`);
     return res.status(200).json({ success: true, message: "Password updated successfully." });

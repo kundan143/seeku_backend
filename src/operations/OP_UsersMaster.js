@@ -12,6 +12,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { copyRoleTemplateToUser } = require("./OP_RolePermission");
 const { isSuperAdminUser, isSuperAdminRole } = require("../services/profileAccess");
+const { blockUser, unblockUser } = require("../services/sessionSecurity");
 const transporter = require("../services/mailTransporterService");
 const saltRounds = 10;
 
@@ -457,6 +458,15 @@ exports.updateAccountBlock = async function (body, requesterId) {
       },
       { where: { id: body.id } }
     );
+
+    // Kill any of their already-issued tokens right now, on every device - without this, the DB
+    // update above only stops their NEXT login, and a currently-open session stays usable for up
+    // to the remaining ~10h of its JWT life.
+    if (isBlocking) {
+      await blockUser(body.id);
+    } else {
+      await unblockUser(body.id);
+    }
 
     responseCodes.SUCCESS.data = null;
     responseCodes.SUCCESS.message = isBlocking ? "Account locked." : "Account unlocked.";
