@@ -68,6 +68,16 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       defaultValue: 0.00,
     },
+    standard_arrear_amount: {
+      type: DataTypes.NUMERIC(12, 2),
+      allowNull: false,
+      defaultValue: 0.00,
+    },
+    da_arrear_amount: {
+      type: DataTypes.NUMERIC(12, 2),
+      allowNull: false,
+      defaultValue: 0.00,
+    },
     arrear_paid_status: {
       type: DataTypes.SMALLINT,
       allowNull: false,

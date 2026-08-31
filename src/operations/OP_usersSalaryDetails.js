@@ -116,6 +116,7 @@ exports.applyIncrement = async function (body) {
     const {
       increment_type, increment_value, disbursement_month, disbursement_year,
       arrear_months, da_arrear_months, standard_lop_days, da_lop_days, total_arrear_amount,
+      standard_arrear_amount, da_arrear_amount,
       remarks, modified_by, modified_date,
       ...salaryFields
     } = data;
@@ -148,6 +149,8 @@ exports.applyIncrement = async function (body) {
         standard_lop_days: standard_lop_days || 0,
         da_lop_days: da_lop_days || 0,
         total_arrear_amount: total_arrear_amount || 0,
+        standard_arrear_amount: standard_arrear_amount || 0,
+        da_arrear_amount: da_arrear_amount || 0,
         old_salary_snapshot: oldSnapshot,
         new_salary_snapshot: newSnapshot,
         remarks: remarks || null,
@@ -286,11 +289,32 @@ exports.getAllData = async function (body) {
       SELECT usd.*,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              um.dob,
-             lih.mail_status AS latest_increment_mail_status
+             lih.mail_status AS latest_increment_mail_status,
+             lih.increment_type AS latest_increment_type,
+             lih.increment_value AS latest_increment_value,
+             lih.effective_from AS latest_increment_effective_from,
+             lih.disbursement_month_name AS latest_disbursement_month_name,
+             lih.disbursement_year AS latest_disbursement_year,
+             lih.arrear_months AS latest_arrear_months,
+             lih.da_arrear_months AS latest_da_arrear_months,
+             lih.standard_lop_days AS latest_standard_lop_days,
+             lih.da_lop_days AS latest_da_lop_days,
+             lih.total_arrear_amount AS latest_total_arrear_amount,
+             lih.standard_arrear_amount AS latest_standard_arrear_amount,
+             lih.da_arrear_amount AS latest_da_arrear_amount,
+             lih.is_reverted AS latest_increment_reverted,
+             lih.created_date AS latest_increment_date
       FROM users_salary_details usd
       LEFT JOIN users_master um ON um.id = usd.user_id
       LEFT JOIN LATERAL (
-        SELECT sih.mail_status
+        SELECT sih.mail_status, sih.increment_type, sih.increment_value, sih.effective_from,
+               sih.disbursement_year, sih.arrear_months, sih.da_arrear_months,
+               sih.standard_lop_days, sih.da_lop_days, sih.total_arrear_amount,
+               sih.standard_arrear_amount, sih.da_arrear_amount,
+               sih.is_reverted, sih.created_date,
+               CASE WHEN sih.disbursement_month IS NOT NULL
+                    THEN TRIM(TO_CHAR(TO_DATE(sih.disbursement_month::TEXT, 'MM'), 'Month'))
+                    ELSE NULL END AS disbursement_month_name
         FROM salary_increment_history sih
         WHERE sih.user_id = usd.user_id AND sih.status = 1
         ORDER BY sih.id DESC
