@@ -116,7 +116,7 @@ exports.applyIncrement = async function (body) {
     const {
       increment_type, increment_value, disbursement_month, disbursement_year,
       arrear_months, da_arrear_months, standard_lop_days, da_lop_days, total_arrear_amount,
-      standard_arrear_amount, da_arrear_amount,
+      standard_arrear_amount, da_arrear_amount, component_arrear_amounts,
       remarks, modified_by, modified_date,
       ...salaryFields
     } = data;
@@ -151,6 +151,7 @@ exports.applyIncrement = async function (body) {
         total_arrear_amount: total_arrear_amount || 0,
         standard_arrear_amount: standard_arrear_amount || 0,
         da_arrear_amount: da_arrear_amount || 0,
+        component_arrear_amounts: component_arrear_amounts || null,
         old_salary_snapshot: oldSnapshot,
         new_salary_snapshot: newSnapshot,
         remarks: remarks || null,
@@ -302,6 +303,7 @@ exports.getAllData = async function (body) {
              lih.total_arrear_amount AS latest_total_arrear_amount,
              lih.standard_arrear_amount AS latest_standard_arrear_amount,
              lih.da_arrear_amount AS latest_da_arrear_amount,
+             lih.component_arrear_amounts AS latest_component_arrear_amounts,
              lih.is_reverted AS latest_increment_reverted,
              lih.created_date AS latest_increment_date
       FROM users_salary_details usd
@@ -310,7 +312,7 @@ exports.getAllData = async function (body) {
         SELECT sih.mail_status, sih.increment_type, sih.increment_value, sih.effective_from,
                sih.disbursement_year, sih.arrear_months, sih.da_arrear_months,
                sih.standard_lop_days, sih.da_lop_days, sih.total_arrear_amount,
-               sih.standard_arrear_amount, sih.da_arrear_amount,
+               sih.standard_arrear_amount, sih.da_arrear_amount, sih.component_arrear_amounts,
                sih.is_reverted, sih.created_date,
                CASE WHEN sih.disbursement_month IS NOT NULL
                     THEN TRIM(TO_CHAR(TO_DATE(sih.disbursement_month::TEXT, 'MM'), 'Month'))

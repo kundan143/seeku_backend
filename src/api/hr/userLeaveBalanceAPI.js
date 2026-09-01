@@ -38,4 +38,12 @@ router.post("/getTotalRemainingLeave", async (req, res, next) => {
     return res.send(await OP_userLeaveBalanceMaster.getTotalRemainingLeave(req.body.id));
 });
 
+router.post("/getBulkCreditStatus", async (req, res, next) => {
+    return res.send(await OP_userLeaveBalanceMaster.getBulkCreditStatus(req.body.leave_code));
+});
+
+router.post("/bulkCredit", async (req, res, next) => {
+    return res.send(await OP_userLeaveBalanceMaster.bulkCreditLeave(req.body));
+});
+
 module.exports = router;

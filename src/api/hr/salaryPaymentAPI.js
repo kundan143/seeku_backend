@@ -37,8 +37,11 @@ router.post('/getRowsByUser', async (req, res, next) => {
 });
 
 // 7 = Get Rows By Month & Year
-router.post('/getRowsByMonthYear', async (req, res, next) => {
-    return res.send(await OP_salaryPayment.getDataByMonthYear(req.body.payment_month, req.body.payment_year));
+router.post('/getRowsByMonthYearPFDetails', async (req, res, next) => {
+    return res.send(await OP_salaryPayment.getDataByMonthYearPFDetails(req.body.payment_month, req.body.payment_year));
+});
+router.post('/getRowsByMonthYearESIDetails', async (req, res, next) => {
+    return res.send(await OP_salaryPayment.getDataByMonthYearESIDetails(req.body.payment_month, req.body.payment_year));
 });
 
 // 8 = Mark As Paid

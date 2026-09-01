@@ -1260,20 +1260,62 @@ exports.bulkEmailSlips = async function (ids, sentBy) {
   return responseCodes.SUCCESS;
 };
 
-exports.getDataByMonthYear = async function (payment_month, payment_year) {
+exports.getDataByMonthYearPFDetails = async function (payment_month, payment_year) {
   try {
     const query = `
+      WITH wage_calc AS (
+        SELECT id,
+               ROUND(basic_salary + dearness_allowance, 2) AS earned_wages,
+               ROUND(CASE WHEN (basic_salary + dearness_allowance) >= 15001 THEN 15000
+                          ELSE (basic_salary + dearness_allowance) END, 2) AS employer_deduction
+        FROM salary_payments
+      )
       SELECT sp.*,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
              dm.name  AS department_name,
-             dm2.designation AS designation_name
+             dm2.designation AS designation_name,
+             (SELECT doc_no FROM user_document_master WHERE user_id = sp.user_id AND doc_type = 'UAN'        AND status = 1 LIMIT 1) AS uan_no,
+             (SELECT doc_no FROM user_document_master WHERE user_id = sp.user_id AND doc_type = 'PF_ACCOUNT' AND status = 1 LIMIT 1) AS pf_account_no,
+             wc.earned_wages,
+             wc.employer_deduction,
+             ROUND(wc.employer_deduction * 8.33 / 100, 2) AS employeer_pf,
+             ROUND(sp.pf_employee - ROUND(wc.employer_deduction * 8.33 / 100, 2), 2) AS employeer_pension,
+             ROUND(wc.employer_deduction * 3.67 / 100, 2) AS pension_employer
       FROM salary_payments sp
+      JOIN wage_calc wc ON wc.id = sp.id
       LEFT JOIN users_master       um   ON um.id   = sp.user_id
       LEFT JOIN department_master  dm   ON dm.id   = um.department_id
       LEFT JOIN designation_master dm2  ON dm2.id  = um.designation_id
-      WHERE sp.payment_month = :payment_month
-        AND sp.payment_year  = :payment_year
-        AND sp.status = 1
+      WHERE sp.payment_month = :payment_month AND sp.payment_year  = :payment_year
+      AND sp.status = 1 AND sp.payment_status = 1 AND sp.mail_status = 1 AND sp.pf_employee > 0
+      ORDER BY sp.id ASC`;
+    const data = await sequelize.query(query, {
+      replacements: { payment_month, payment_year },
+      type: QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Salary Payments";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+exports.getDataByMonthYearESIDetails = async function (payment_month, payment_year) {
+  try {
+    const query = `
+      SELECT sp.id, sp.user_id, sp.payment_month, sp.payment_year, sp.gross_salary, sp.working_days,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+             ROUND(sp.gross_salary, 2) AS earned_wages,
+             ROUND(sp.gross_salary * 0.75 / 100, 2) AS employee_state_insurance,
+             ROUND(sp.gross_salary * 3.25 / 100, 2) AS esi_employer,
+             (SELECT doc_no FROM user_document_master WHERE user_id = sp.user_id AND doc_type = 'ESI_No' AND status = 1 LIMIT 1) AS esi_no
+      FROM salary_payments sp
+      LEFT JOIN users_master um ON um.id = sp.user_id
+      WHERE sp.payment_month = :payment_month AND sp.payment_year = :payment_year
+      AND sp.gross_salary <= 21000
+      AND sp.status = 1 AND sp.payment_status = 1 AND sp.mail_status = 1 AND sp.employee_state_insurance > 0
       ORDER BY sp.id ASC`;
     const data = await sequelize.query(query, {
       replacements: { payment_month, payment_year },

@@ -78,6 +78,10 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       defaultValue: 0.00,
     },
+    component_arrear_amounts: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+    },
     arrear_paid_status: {
       type: DataTypes.SMALLINT,
       allowNull: false,
