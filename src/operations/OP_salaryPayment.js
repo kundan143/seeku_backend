@@ -1272,6 +1272,7 @@ exports.getDataByMonthYearPFDetails = async function (payment_month, payment_yea
       )
       SELECT sp.*,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+             um.emp_code AS emp_code,
              dm.name  AS department_name,
              dm2.designation AS designation_name,
              (SELECT doc_no FROM user_document_master WHERE user_id = sp.user_id AND doc_type = 'UAN'        AND status = 1 LIMIT 1) AS uan_no,
@@ -1306,7 +1307,9 @@ exports.getDataByMonthYearESIDetails = async function (payment_month, payment_ye
   try {
     const query = `
       SELECT sp.id, sp.user_id, sp.payment_month, sp.payment_year, sp.gross_salary, sp.working_days,
+             sp.esi_paid_status,
              CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+             um.emp_code AS emp_code,
              ROUND(sp.gross_salary, 2) AS earned_wages,
              ROUND(sp.gross_salary * 0.75 / 100, 2) AS employee_state_insurance,
              ROUND(sp.gross_salary * 3.25 / 100, 2) AS esi_employer,

@@ -176,6 +176,11 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: false,
             defaultValue: 0
         },
+        esi_paid_status: {
+            type: DataTypes.SMALLINT,
+            allowNull: false,
+            defaultValue: 0
+        },
         status: {
             type: DataTypes.SMALLINT,
             allowNull: false,
