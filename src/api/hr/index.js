@@ -27,4 +27,5 @@ module.exports = async (app, jwt) => {
     app.use(ROOT_BASE_URL_hr + '/salaryIncrementHistory', jwt, apiActivityLogger, require('../hr/salaryIncrementHistoryAPI'));
     app.use(ROOT_BASE_URL_hr + '/employeeIncentiveDetails', jwt, apiActivityLogger, require('../hr/employeeIncentiveDetailsAPI'));
     app.use(ROOT_BASE_URL_hr + '/socialPosts', jwt, apiActivityLogger, require('../hr/socialPostsAPI'));
+    app.use(ROOT_BASE_URL_hr + '/employeeFnfSettlement', jwt, apiActivityLogger, require('../hr/employeeFnfSettlementAPI'));
 };

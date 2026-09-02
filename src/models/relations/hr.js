@@ -19,6 +19,7 @@ h.holidaysMaster = require("../holidays_master")(sequelize, DataTypes);
 h.companyNewsMaster = require("../company_news")(sequelize, DataTypes);
 h.userLeaveBalance = require("../user_leave_balance")(sequelize, DataTypes);
 h.leaveBulkCreditLog = require("../leave_bulk_credit_log")(sequelize, DataTypes);
+h.employeeFnfSettlement = require("../employee_fnf_settlement")(sequelize, DataTypes);
 h.employeeIncentiveDetails = require("../employee_incentive_details")(sequelize, DataTypes);
 h.userDocumentMaster = require("../user_document_master")(sequelize, DataTypes);
 h.candidates = require("../candidates")(sequelize, DataTypes);
