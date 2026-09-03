@@ -1,9 +1,14 @@
-const { userLeaveBalance, leaveBulkCreditLog, leaveTypeMaster } = require("../models");
+const { userLeaveBalance, leaveBulkCreditLog, leaveTypeMaster, leaveEncashmentHistory } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 // const { sendNotification } = require("../services/notificationService");
 const { sequelize } = require("../config/database-connection");
 const { Op, QueryTypes } = require("sequelize");
 const currentYear = new Date().getFullYear();
+
+// Leave encashment - only the balance ABOVE this many days is convertible to cash, per
+// (employee, leave type) row. Matches this screen's own remaining_days granularity rather than
+// a company-wide total across every leave type.
+const ENCASHMENT_THRESHOLD_DAYS = 15;
 
 exports.addData = async function (body) {
   try {
@@ -231,6 +236,163 @@ exports.getTotalRemainingLeave = async function (id) {
   } catch (error) {
     responseCodes.BAD_REQUEST.data = error;
     responseCodes.BAD_REQUEST.message = "Failed to Load Data";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+// How much of one (employee, leave type) balance row can be converted to cash - only the
+// portion above ENCASHMENT_THRESHOLD_DAYS, at the employee's current per-day gross rate (same
+// gross_salary/30 divisor this app already uses for LOP/arrear/FNF proration elsewhere).
+exports.previewEncashment = async function (leave_balance_id) {
+  try {
+    const rows = await sequelize.query(
+      `SELECT ulb.id, ulb.user_id, ulb.leave_type_id, ulb.remaining_days,
+              ltm.leave_name, ltm.leave_code,
+              CONCAT(um.first_name, ' ', um.middle_name, ' ', um.last_name) AS emp_name
+       FROM user_leave_balance ulb
+       JOIN leave_type_master ltm ON ltm.id = ulb.leave_type_id
+       JOIN users_master um ON um.id = ulb.user_id
+       WHERE ulb.id = :leave_balance_id AND ulb.status = 1`,
+      { replacements: { leave_balance_id }, type: QueryTypes.SELECT }
+    );
+    if (!rows.length) {
+      responseCodes.NOT_FOUND.data = null;
+      responseCodes.NOT_FOUND.message = "Leave balance record not found";
+      return responseCodes.NOT_FOUND;
+    }
+    const row = rows[0];
+    const remainingDays = Number(row.remaining_days) || 0;
+    const maxEncashableDays = Math.max(0, Math.round((remainingDays - ENCASHMENT_THRESHOLD_DAYS) * 100) / 100);
+
+    const salaryRows = await sequelize.query(
+      `SELECT gross_salary FROM users_salary_details
+       WHERE user_id = :user_id AND status = 1 AND salary_type = 1
+       ORDER BY id DESC LIMIT 1`,
+      { replacements: { user_id: row.user_id }, type: QueryTypes.SELECT }
+    );
+    const grossMonthly = Number(salaryRows[0]?.gross_salary) || 0;
+    const perDayAmount = Math.round((grossMonthly / 30) * 100) / 100;
+
+    responseCodes.SUCCESS.data = {
+      leave_balance_id: row.id,
+      user_id: row.user_id,
+      emp_name: row.emp_name,
+      leave_type_id: row.leave_type_id,
+      leave_name: row.leave_name,
+      remaining_days: remainingDays,
+      threshold_days: ENCASHMENT_THRESHOLD_DAYS,
+      max_encashable_days: maxEncashableDays,
+      per_day_amount: perDayAmount,
+    };
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Calculate Encashment Preview";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+// Converts encashed_days of one balance row to cash - moves the days from remaining_days to
+// used_days (so allocated = used + remaining stays intact, same as any other leave consumption)
+// and records the payout in leave_encashment_history. Re-validates the threshold/remaining-days
+// server-side rather than trusting whatever the client sent, since this pays out real money.
+exports.encashLeave = async function (body) {
+  const t = await sequelize.transaction();
+  try {
+    const { leave_balance_id, encashed_days, remarks, created_by } = body;
+    const days = Number(encashed_days);
+    if (!leave_balance_id || !days || days <= 0) {
+      await t.rollback();
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "leave_balance_id and a positive encashed_days are required";
+      return responseCodes.BAD_REQUEST;
+    }
+
+    const balanceRow = await userLeaveBalance.findOne({ where: { id: leave_balance_id, status: 1 }, transaction: t });
+    if (!balanceRow) {
+      await t.rollback();
+      responseCodes.NOT_FOUND.data = null;
+      responseCodes.NOT_FOUND.message = "Leave balance record not found";
+      return responseCodes.NOT_FOUND;
+    }
+
+    const remainingDays = Number(balanceRow.remaining_days) || 0;
+    const maxEncashableDays = Math.round((remainingDays - ENCASHMENT_THRESHOLD_DAYS) * 100) / 100;
+    if (remainingDays <= ENCASHMENT_THRESHOLD_DAYS || days > maxEncashableDays) {
+      await t.rollback();
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = `Only ${Math.max(0, maxEncashableDays)} day(s) above the ${ENCASHMENT_THRESHOLD_DAYS}-day threshold can be encashed.`;
+      return responseCodes.BAD_REQUEST;
+    }
+
+    const salaryRows = await sequelize.query(
+      `SELECT gross_salary FROM users_salary_details
+       WHERE user_id = :user_id AND status = 1 AND salary_type = 1
+       ORDER BY id DESC LIMIT 1`,
+      { replacements: { user_id: balanceRow.user_id }, type: QueryTypes.SELECT, transaction: t }
+    );
+    const grossMonthly = Number(salaryRows[0]?.gross_salary) || 0;
+    const perDayAmount = Math.round((grossMonthly / 30) * 100) / 100;
+    const encashmentAmount = Math.round(days * perDayAmount * 100) / 100;
+
+    await userLeaveBalance.update(
+      {
+        remaining_days: Math.round((remainingDays - days) * 100) / 100,
+        used_days: Math.round(((Number(balanceRow.used_days) || 0) + days) * 100) / 100,
+        updated_by: created_by,
+        updated_date: body.created_date,
+      },
+      { where: { id: leave_balance_id }, transaction: t }
+    );
+
+    const historyRow = await leaveEncashmentHistory.create(
+      {
+        user_id: balanceRow.user_id,
+        leave_type_id: balanceRow.leave_type_id,
+        leave_balance_id,
+        remaining_days_before: remainingDays,
+        encashed_days: days,
+        per_day_amount: perDayAmount,
+        encashment_amount: encashmentAmount,
+        remarks: remarks || null,
+        created_by,
+        created_date: body.created_date,
+      },
+      { transaction: t }
+    );
+
+    await t.commit();
+    responseCodes.SUCCESS.data = { id: historyRow.id, encashment_amount: encashmentAmount };
+    responseCodes.SUCCESS.message = `${days} day(s) encashed for ₹${encashmentAmount}`;
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    await t.rollback();
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Process Leave Encashment";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+// Every past encashment, most recent first - global audit trail (not scoped to one employee),
+// shown from the same Employee Leave Balance screen the Encash action lives on.
+exports.getEncashmentHistory = async function () {
+  try {
+    const data = await sequelize.query(
+      `SELECT leh.*, CONCAT(um.first_name, ' ', um.last_name) AS user_name,
+              CONCAT(ltm.leave_name, ' (', ltm.leave_code, ')') AS leave_type
+       FROM leave_encashment_history leh
+       JOIN users_master um ON um.id = leh.user_id
+       JOIN leave_type_master ltm ON ltm.id = leh.leave_type_id
+       ORDER BY leh.id DESC`,
+      { type: QueryTypes.SELECT }
+    );
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Encashment History";
     return responseCodes.BAD_REQUEST;
   }
 };

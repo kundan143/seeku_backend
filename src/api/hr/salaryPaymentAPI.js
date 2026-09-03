@@ -43,6 +43,12 @@ router.post('/getRowsByMonthYearPFDetails', async (req, res, next) => {
 router.post('/getRowsByMonthYearESIDetails', async (req, res, next) => {
     return res.send(await OP_salaryPayment.getDataByMonthYearESIDetails(req.body.payment_month, req.body.payment_year));
 });
+router.post('/getRowsByMonthYearIncomeTaxDetails', async (req, res, next) => {
+    return res.send(await OP_salaryPayment.getDataByMonthYearIncomeTaxDetails(req.body.payment_month, req.body.payment_year));
+});
+router.post('/getRowsByMonthYearPTDetails', async (req, res, next) => {
+    return res.send(await OP_salaryPayment.getDataByMonthYearPTDetails(req.body.payment_month, req.body.payment_year));
+});
 
 // 8 = Mark As Paid
 router.post('/markAsPaid', async (req, res, next) => {

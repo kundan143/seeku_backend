@@ -1334,6 +1334,61 @@ exports.getDataByMonthYearESIDetails = async function (payment_month, payment_ye
   }
 };
 
+exports.getDataByMonthYearIncomeTaxDetails = async function (payment_month, payment_year) {
+  try {
+    const query = `
+      SELECT sp.id, sp.user_id, sp.payment_month, sp.payment_year, sp.gross_salary, sp.working_days,
+             sp.income_tax, sp.income_tax_paid_status,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+             um.emp_code AS emp_code,
+             ROUND(sp.gross_salary, 2) AS earned_wages,
+             (SELECT doc_no FROM user_document_master WHERE user_id = sp.user_id AND doc_type = 'PAN' AND status = 1 LIMIT 1) AS pan_no
+      FROM salary_payments sp
+      LEFT JOIN users_master um ON um.id = sp.user_id
+      WHERE sp.payment_month = :payment_month AND sp.payment_year = :payment_year
+      AND sp.status = 1 AND sp.payment_status = 1 AND sp.mail_status = 1 AND sp.income_tax > 0
+      ORDER BY sp.id ASC`;
+    const data = await sequelize.query(query, {
+      replacements: { payment_month, payment_year },
+      type: QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Salary Payments";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+exports.getDataByMonthYearPTDetails = async function (payment_month, payment_year) {
+  try {
+    const query = `
+      SELECT sp.id, sp.user_id, sp.payment_month, sp.payment_year, sp.gross_salary, sp.working_days,
+             sp.professional_tax, sp.pt_paid_status,
+             CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
+             um.emp_code AS emp_code,
+             ROUND(sp.gross_salary, 2) AS earned_wages
+      FROM salary_payments sp
+      LEFT JOIN users_master um ON um.id = sp.user_id
+      WHERE sp.payment_month = :payment_month AND sp.payment_year = :payment_year
+      AND sp.status = 1 AND sp.payment_status = 1 AND sp.mail_status = 1 AND sp.professional_tax > 0
+      ORDER BY sp.id ASC`;
+    const data = await sequelize.query(query, {
+      replacements: { payment_month, payment_year },
+      type: QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Salary Payments";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 exports.getDataPaymentCompleted = async function (user_id) {
   try {
     const query = `

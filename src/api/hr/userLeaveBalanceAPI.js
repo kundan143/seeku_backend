@@ -46,4 +46,16 @@ router.post("/bulkCredit", async (req, res, next) => {
     return res.send(await OP_userLeaveBalanceMaster.bulkCreditLeave(req.body));
 });
 
+router.post("/previewEncashment", async (req, res, next) => {
+    return res.send(await OP_userLeaveBalanceMaster.previewEncashment(req.body.leave_balance_id));
+});
+
+router.post("/encashLeave", async (req, res, next) => {
+    return res.send(await OP_userLeaveBalanceMaster.encashLeave(req.body));
+});
+
+router.get("/getEncashmentHistory", async (req, res, next) => {
+    return res.send(await OP_userLeaveBalanceMaster.getEncashmentHistory());
+});
+
 module.exports = router;
