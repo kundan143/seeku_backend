@@ -25,7 +25,7 @@ const LETTER_COMPONENT_FIELDS = [
   { field: "medical_allowance", tag: "medical_allowance" },
   { field: "travel_allowance", tag: "travel_allowance" },
   { field: "special_allowance", tag: "special_allowance" },
-  { field: "bonus", tag: "bonus" },
+  { field: "exgratia", tag: "exgratia" },
   { field: "pf_employee", tag: "pf_employee" },
   { field: "professional_tax", tag: "professional_tax" },
   { field: "income_tax", tag: "income_tax" },
@@ -41,7 +41,7 @@ const LETTER_COMPONENT_FIELDS = [
 ];
 
 // Drops a Compensation Summary <tr> entirely when a component was 0 both before and after the
-// increment (e.g. City Allowance/Bonus/Loan Deduction unused by this employee) - same idea as
+// increment (e.g. City Allowance/Exgratia/Loan Deduction unused by this employee) - same idea as
 // OP_salaryPayment's stripRowIfZero, adapted for <tr> rows instead of <div> rows and for a pair
 // of old/new tags instead of one. Matched on the "new_<tag>_fmt" placeholder, which is enough to
 // anchor the whole row since both tags live in the same <tr>..</tr>. Run on the raw template

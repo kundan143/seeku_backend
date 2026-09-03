@@ -625,7 +625,7 @@ exports.getActiveUsersById = async function (body) {
 exports.getOneData = async function (id) {
   try {
     var query = `select usd.basic_salary, usd.hra, usd.conveyance, usd.medical_allowance,
-    usd.special_allowance, usd.bonus, usd.pf_employee, usd.esi_employer,
+    usd.special_allowance, usd.exgratia, usd.pf_employee, usd.esi_employer,
     usd.professional_tax, usd.other_deduction,usd.gross_salary,
     usd.net_salary, um.first_name, um.last_name, um.middle_name,
     um.email, um.work_email, um.work_mobile, um.mobile, um.dob, um.doj,

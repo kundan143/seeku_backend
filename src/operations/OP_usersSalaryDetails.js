@@ -6,7 +6,7 @@ const { QueryTypes, Op } = require("sequelize");
 // Fields whose value depends on salary_type (Monthly x 12 <-> Yearly / 12)
 const AMOUNT_FIELDS = [
   "ctc", "basic_salary", "dearness_allowance", "city_allowance", "hra",
-  "conveyance", "medical_allowance", "travel_allowance", "special_allowance", "bonus",
+  "conveyance", "medical_allowance", "travel_allowance", "special_allowance", "exgratia",
   "pf_employee", "professional_tax", "income_tax", "employee_state_insurance",
   "loan_deduction", "other_deduction", "pf_employer", "esi_employer",
   "gratuity", "gross_salary", "total_deductions", "net_salary",

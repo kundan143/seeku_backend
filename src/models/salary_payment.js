@@ -65,7 +65,7 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true,
             defaultValue: 0.00
         },
-        bonus: {
+        exgratia: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true,
             defaultValue: 0.00

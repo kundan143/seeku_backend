@@ -413,16 +413,16 @@ const ZERO_HIDE_MERGE_TAGS = [
 function clampRatio(paidDays, workingDays) {
   return workingDays > 0 ? Math.max(0, Math.min(1, paidDays / workingDays)) : 1;
 }
-const EARNING_KEYS = ['basic_salary','dearness_allowance','city_allowance','hra','conveyance','medical_allowance','travel_allowance','special_allowance','bonus'];
+const EARNING_KEYS = ['basic_salary','dearness_allowance','city_allowance','hra','conveyance','medical_allowance','travel_allowance','special_allowance','exgratia'];
 // Prorates each earning line by ratio and sums the already-rounded lines for gross_salary,
 // so an itemized earnings table always adds up exactly to the printed Gross Salary.
-// When bonusOverride is given (an incentive was disbursed this month), it replaces the
-// master's configured bonus entirely and is paid in full, unprorated by attendance.
-function prorateEarnings(master, ratio, bonusOverride) {
+// When exgratiaOverride is given (an incentive was disbursed this month), it replaces the
+// master's configured exgratia entirely and is paid in full, unprorated by attendance.
+function prorateEarnings(master, ratio, exgratiaOverride) {
   const fields = {};
   let gross = 0;
   EARNING_KEYS.forEach(k => {
-    const v = (k === 'bonus' && bonusOverride != null) ? round2(Number(bonusOverride)) : round2(Number(master[k]) * ratio);
+    const v = (k === 'exgratia' && exgratiaOverride != null) ? round2(Number(exgratiaOverride)) : round2(Number(master[k]) * ratio);
     fields[k] = v;
     gross += v;
   });
@@ -474,7 +474,7 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       SELECT usd.id AS salary_detail_id, usd.user_id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
       um.dob,
       dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance,
-      usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.pf_employee,
+      usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.exgratia, usd.pf_employee,
       usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.other_deduction, usd.pf_employer, usd.net_salary,
       usd.esi_employer, usd.gratuity, usd.gross_salary, usd.total_deductions,
       COALESCE((
@@ -642,7 +642,7 @@ exports.processBulkPayroll = async function (body) {
     const masterRows = salaryDetailIds.length
       ? await sequelize.query(
           `SELECT usd.id, usd.basic_salary, usd.dearness_allowance, usd.city_allowance, usd.hra, usd.conveyance,
-                  usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.bonus, usd.total_deductions,
+                  usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.exgratia, usd.total_deductions,
                   usd.pf_employee, usd.professional_tax, usd.income_tax, usd.employee_state_insurance,
                   usd.loan_deduction, usd.other_deduction, usd.pf_employer, usd.esi_employer, usd.gratuity,
                   um.dob,
@@ -967,7 +967,7 @@ exports.generateSlip = async function (id) {
       medical_allowance_fmt: fmt(sp.medical_allowance),
       travel_allowance_fmt: fmt(sp.travel_allowance),
       special_allowance_fmt: fmt(sp.special_allowance),
-      bonus_fmt: fmt(sp.bonus),
+      exgratia_fmt: fmt(sp.exgratia),
       pf_employee_fmt: fmt(sp.pf_employee),
       professional_tax_fmt: fmt(sp.professional_tax),
       income_tax_fmt: fmt(sp.income_tax),

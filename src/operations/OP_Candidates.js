@@ -472,7 +472,7 @@ exports.convertToEmployee = async function (body) {
         medical_allowance: candidate.medical_allowance,
         lta: candidate.lta,
         special_allowance: candidate.special_allowance,
-        bonus: candidate.bonus,
+        exgratia: candidate.bonus,
         pf_employee: candidate.pf_employee,
         professional_tax: candidate.professional_tax,
         income_tax: candidate.income_tax,
