@@ -70,6 +70,26 @@ module.exports = function (sequelize, DataTypes) {
             allowNull: true,
             defaultValue: 0.00
         },
+        variable_pay_1: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        variable_pay_2: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        variable_pay_3: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        variable_pay_4: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
         pf_employee: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true,

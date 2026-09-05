@@ -4,6 +4,7 @@ const {
   usersBankDetails,
   usersSalaryDetails,
   userDocumentMaster,
+  credentialsMailLog,
 } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
@@ -895,8 +896,8 @@ exports.sendCredentialsMail = async function (body) {
             <td style="padding: 12px 16px; font-weight: bold;">${user.emp_code || "—"}</td>
           </tr>
           <tr>
-            <td style="padding: 12px 16px; color: #555; border-top: 1px solid #e0e4ec;">Password</td>
-            <td style="padding: 12px 16px; font-weight: bold; letter-spacing: 2px; border-top: 1px solid #e0e4ec;">${user.work_email}</td>
+            <td style="padding: 12px 16px; color: #555; border-top: 1px solid #e0e4ec;">One-Time Password (OTP)</td>
+            <td style="padding: 12px 16px; font-weight: bold; letter-spacing: 2px; border-top: 1px solid #e0e4ec;">${otp}</td>
           </tr>
         </table>
         <p>This OTP is valid for <strong>${CREDENTIALS_OTP_EXPIRY_MINUTES} minutes</strong>. On the login page, choose <strong>"Forgot Password"</strong> and enter this OTP along with your new password to activate your account.</p>
@@ -909,26 +910,91 @@ exports.sendCredentialsMail = async function (body) {
       </div>
     `;
 
-    await transporter.sendMail({
-      from: process.env.EXP_HANDLE_USER_NAME || "no-reply@seeku.in",
-      to: user.work_email,
-      subject,
-      html,
-    });
+    try {
+      await transporter.sendMail({
+        from: process.env.EXP_HANDLE_USER_NAME || "no-reply@seeku.in",
+        to: user.work_email,
+        subject,
+        html,
+      });
 
-    await usersMaster.update(
-      { reset_otp: otp, reset_otp_expiry: otpExpiry, must_change_password: true },
-      { where: { id: body.id } }
-    );
+      await usersMaster.update(
+        {
+          reset_otp: otp, reset_otp_expiry: otpExpiry, must_change_password: true,
+          credentials_mail_status: 1, credentials_mail_sent_date: new Date(),
+        },
+        { where: { id: body.id } }
+      );
+      await credentialsMailLog.create({
+        user_id: user.id,
+        recipient_email: user.work_email,
+        subject,
+        status: 1,
+        sent_by: body.sent_by || body.modified_by || null,
+        sent_date: new Date(),
+      });
 
-    responseCodes.SUCCESS.data = { sent_to: user.work_email };
-    responseCodes.SUCCESS.message = `Account setup email sent to ${user.work_email}`;
-    return responseCodes.SUCCESS;
+      responseCodes.SUCCESS.data = { sent_to: user.work_email };
+      responseCodes.SUCCESS.message = `Account setup email sent to ${user.work_email}`;
+      return responseCodes.SUCCESS;
+    } catch (sendErr) {
+      await credentialsMailLog.create({
+        user_id: user.id,
+        recipient_email: user.work_email,
+        subject,
+        status: 0,
+        sent_by: body.sent_by || body.modified_by || null,
+        sent_date: new Date(),
+      });
+      throw sendErr;
+    }
   } catch (e) {
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to send credentials email";
     return responseCodes.BAD_REQUEST;
   }
+};
+
+// Same "skip already sent, batch the rest" pattern as OP_salaryPayment.js's bulkEmailSlips -
+// reuses sendCredentialsMail per employee so both the per-row and bulk paths share one
+// implementation (and one place that updates credentials_mail_status).
+const BULK_CREDENTIALS_MAIL_CONCURRENCY = 5;
+exports.bulkSendCredentialsMail = async function (ids, sentBy) {
+  const rows = await usersMaster.findAll({
+    where: { id: { [Op.in]: ids } },
+    attributes: ["id", "credentials_mail_status"],
+  });
+  const skipped = rows.filter((r) => r.credentials_mail_status === 1).map((r) => r.id);
+  const toSend = rows.filter((r) => r.credentials_mail_status !== 1).map((r) => r.id);
+
+  const sent = [], failed = [];
+  for (let i = 0; i < toSend.length; i += BULK_CREDENTIALS_MAIL_CONCURRENCY) {
+    const batch = toSend.slice(i, i + BULK_CREDENTIALS_MAIL_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (id) => {
+        try {
+          const res = await exports.sendCredentialsMail({ id, sent_by: sentBy });
+          return res.code === "100" ? { id, ok: true } : { id, ok: false, reason: res.message };
+        } catch (e) {
+          return { id, ok: false, reason: e.message };
+        }
+      })
+    );
+    for (const r of results) {
+      if (r.ok) sent.push(r.id);
+      else failed.push({ id: r.id, reason: r.reason });
+    }
+  }
+
+  const data = { sent, failed, skipped };
+  if (sent.length === 0 && toSend.length > 0) {
+    responseCodes.BAD_REQUEST.data = data;
+    responseCodes.BAD_REQUEST.message = `Failed to send all ${toSend.length} email(s)`;
+    return responseCodes.BAD_REQUEST;
+  }
+  responseCodes.SUCCESS.data = data;
+  responseCodes.SUCCESS.message = `Sent ${sent.length} email(s) successfully${failed.length ? `, ${failed.length} failed` : ""}${skipped.length ? `, ${skipped.length} already sent (skipped)` : ""}`;
+  return responseCodes.SUCCESS;
 };
 
 exports.updateProfilePic = async function (body) {

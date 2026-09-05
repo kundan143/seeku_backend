@@ -102,6 +102,12 @@ exports.accrueEmployeeIncentiveDetails = async function () {
 
     let schemesProcessed = 0;
     const employeeAmounts = new Map();
+    // Informational-only disbursement_month, carried onto a brand-new employee_incentive_details
+    // row at creation time (see below) - never used to overwrite an existing row's already-set
+    // disbursed_month_id. When several schemes contribute to the same employee/fiscal-year in one
+    // run, whichever scheme is processed first for that employee wins (first-write-wins, not a
+    // strict per-scheme link - one accrued row can be the sum of many schemes).
+    const employeeDisbursementMonth = new Map();
 
     for (const scheme of schemes) {
       const currentPeriod = getCurrentPeriod(scheme.frequency, fiscalMonth);
@@ -119,6 +125,9 @@ exports.accrueEmployeeIncentiveDetails = async function () {
             : round2(Number(scheme.incentive_amount) / periodsPerYear);
 
         employeeAmounts.set(employee_id, round2((employeeAmounts.get(employee_id) || 0) + amount));
+        if (!employeeDisbursementMonth.has(employee_id) && scheme.disbursement_month != null) {
+          employeeDisbursementMonth.set(employee_id, scheme.disbursement_month);
+        }
       }
 
       await scheme.update({ last_accrued_year: fiscalYear, last_accrued_period: currentPeriod }, { transaction: t });
@@ -146,6 +155,7 @@ exports.accrueEmployeeIncentiveDetails = async function () {
             year: fiscalYear,
             amount,
             status: 1,
+            disbursed_month_id: employeeDisbursementMonth.get(employee_id) ?? null,
             created_by: SYSTEM_USER_ID,
             created_date: new Date(),
           },

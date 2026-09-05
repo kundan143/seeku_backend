@@ -24,6 +24,7 @@ h.leaveEncashmentHistory = require("../leave_encashment_history")(sequelize, Dat
 h.employeeIncentiveDetails = require("../employee_incentive_details")(sequelize, DataTypes);
 h.userDocumentMaster = require("../user_document_master")(sequelize, DataTypes);
 h.candidates = require("../candidates")(sequelize, DataTypes);
+h.candidateOfferHistory = require("../candidate_offer_history")(sequelize, DataTypes);
 h.employeeAssets = require("../employee_assets")(sequelize, DataTypes);
 h.attendancePunches = require("../attendance_punches")(sequelize, DataTypes);
 h.attendanceRegularization = require("../attendance_regularization")(sequelize, DataTypes);
@@ -34,6 +35,7 @@ h.medicalInsurance = require("../medical_insurance")(sequelize, DataTypes);
 h.incentiveMaster = require("../incentive_master")(sequelize, DataTypes);
 h.salaryIncrementHistory = require("../salary_increment_history")(sequelize, DataTypes);
 h.incrementLetterMailLog = require("../increment_letter_mail_log")(sequelize, DataTypes);
+h.customMailLog = require("../custom_mail_log")(sequelize, DataTypes);
 h.socialPosts = require("../social_posts")(sequelize, DataTypes);
 h.socialPostLikes = require("../social_post_likes")(sequelize, DataTypes);
 h.socialPostComments = require("../social_post_comments")(sequelize, DataTypes);
@@ -74,6 +76,7 @@ h.salarySlipMailLog.belongsTo(m.usersMaster, { as: 'sent_by_user', foreignKey: '
 h.incrementLetterMailLog.belongsTo(h.salaryIncrementHistory, { foreignKey: 'salary_increment_history_id' });
 h.incrementLetterMailLog.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'user_id' });
 h.incrementLetterMailLog.belongsTo(m.usersMaster, { as: 'sent_by_user', foreignKey: 'sent_by' });
+h.customMailLog.belongsTo(m.usersMaster, { as: 'sent_by_user', foreignKey: 'sent_by' });
 
 
 h.userLeavesDetails.belongsTo(m.usersMaster, { foreignKey: 'user_id' });
@@ -137,6 +140,9 @@ h.candidates.belongsTo(m.usersMaster, { as: 'converted_user',    foreignKey: 'co
 h.candidates.belongsTo(m.usersMaster, { as: 'created_by_user',   foreignKey: 'created_by' });
 h.candidates.belongsTo(m.usersMaster, { as: 'modified_by_user',  foreignKey: 'modified_by' });
 h.candidates.belongsTo(m.usersMaster, { as: 'deleted_by_user',   foreignKey: 'deleted_by' });
+
+h.candidateOfferHistory.belongsTo(h.candidates, { foreignKey: 'candidate_id' });
+h.candidateOfferHistory.belongsTo(m.usersMaster, { foreignKey: 'modified_by' });
 
 h.employeeAssets.belongsTo(m.assetMaster, { foreignKey: 'asset_id' });
 h.employeeAssets.belongsTo(m.usersMaster, { foreignKey: 'user_id' });

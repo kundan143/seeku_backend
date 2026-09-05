@@ -37,6 +37,11 @@ module.exports = function (sequelize, DataTypes) {
       allowNull: false,
       defaultValue: "yearly",
     },
+    // Informational only - HR's note of the expected payout month. NOT read by the accrual cron.
+    disbursement_month: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     last_accrued_year: {
       type: DataTypes.INTEGER,
       allowNull: true,

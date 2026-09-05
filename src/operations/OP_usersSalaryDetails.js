@@ -7,13 +7,21 @@ const { QueryTypes, Op } = require("sequelize");
 const AMOUNT_FIELDS = [
   "ctc", "basic_salary", "dearness_allowance", "city_allowance", "hra",
   "conveyance", "medical_allowance", "travel_allowance", "special_allowance", "exgratia",
+  "variable_pay_1", "variable_pay_2", "variable_pay_3", "variable_pay_4",
+  "fuel_transport_expenses", "medical_insurance", "accidental_insurance", "uniform",
   "pf_employee", "professional_tax", "income_tax", "employee_state_insurance",
   "loan_deduction", "other_deduction", "pf_employer", "esi_employer",
   "gratuity", "gross_salary", "total_deductions", "net_salary",
 ];
 
-// Fields carried over as-is to the auto-generated counterpart row
-const SHARED_FIELDS = ["user_id", "effective_from", "pay_frequency", "tax_regime"];
+// Fields carried over as-is to the auto-generated counterpart row (categorical/non-amount
+// fields - the Variable Pay frequency tags and disbursement months are never scaled x12/÷12)
+const SHARED_FIELDS = [
+  "user_id", "effective_from", "pay_frequency", "tax_regime",
+  "variable_pay_1_frequency", "variable_pay_2_frequency", "variable_pay_3_frequency", "variable_pay_4_frequency",
+  "variable_pay_1_disbursement_month", "variable_pay_2_disbursement_month",
+  "variable_pay_3_disbursement_month", "variable_pay_4_disbursement_month",
+];
 
 function round2(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -29,8 +37,19 @@ function buildCounterpart(source) {
   });
 
   AMOUNT_FIELDS.forEach((field) => {
+    if (/^variable_pay_[1-4]$/.test(field)) return; // handled below - scaling depends on frequency
     const value = Number(source[field]) || 0;
     counterpart[field] = toYearly ? round2(value * 12) : round2(value / 12);
+  });
+
+  // A Monthly-frequency Variable Pay scales with the salary_type toggle like any other earning;
+  // a Yearly/Half-Yearly one already stores its annual total regardless of salary_type, so it's
+  // carried over unscaled instead of being multiplied/divided again.
+  [1, 2, 3, 4].forEach((n) => {
+    const key = `variable_pay_${n}`;
+    const frequency = source[`${key}_frequency`] || "Monthly";
+    const value = Number(source[key]) || 0;
+    counterpart[key] = frequency === "Monthly" ? (toYearly ? round2(value * 12) : round2(value / 12)) : value;
   });
 
   if (source.created_by !== undefined) counterpart.created_by = source.created_by;

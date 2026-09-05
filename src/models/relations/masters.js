@@ -46,6 +46,7 @@ m.emailTemplateMaster = require("../email_template_master")(sequelize, DataTypes
 m.pdfTemplateMaster = require("../pdf_template_master")(sequelize, DataTypes);
 m.systemConfig = require("../system_config")(sequelize, DataTypes);
 m.documentTypeMaster = require("../document_type_master")(sequelize, DataTypes);
+m.credentialsMailLog = require("../credentials_mail_log")(sequelize, DataTypes);
 
 // Relations
 // m.usersMaster.belongsTo(dt.roleMaster, { foreignKey: 'role_id' });
@@ -58,6 +59,8 @@ m.usersMaster.belongsTo(m.bloodGroupMaster, { foreignKey: 'blood_group_id' });
 m.usersMaster.belongsTo(m.empTypeMaster, { foreignKey: 'emp_type_id' });
 m.usersMaster.belongsTo(m.maritalStatusMaster, { foreignKey: 'marital_status_id' });
 m.usersMaster.belongsTo(m.countryMaster, { foreignKey: 'nationality_id' });
+m.credentialsMailLog.belongsTo(m.usersMaster, { as: 'employee', foreignKey: 'user_id' });
+m.credentialsMailLog.belongsTo(m.usersMaster, { as: 'sent_by_user', foreignKey: 'sent_by' });
 m.usersMaster.belongsTo(m.usersMaster, { as: 'created_by_user', foreignKey: 'created_by' });
 m.usersMaster.belongsTo(m.usersMaster, { as: 'modified_by_user', foreignKey: 'modified_by' });
 

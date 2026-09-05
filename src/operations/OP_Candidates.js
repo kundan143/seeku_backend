@@ -1,4 +1,4 @@
-const { candidates, usersMaster, usersSalaryDetails } = require("../models");
+const { candidates, candidateOfferHistory, usersMaster, usersSalaryDetails } = require("../models");
 const { responseCodes } = require("../services/baseReponse");
 const { sequelize } = require("../config/database-connection");
 const { QueryTypes } = require("sequelize");
@@ -10,10 +10,20 @@ const transporter = require("../services/mailTransporterService");
 
 const saltRounds = 10;
 
-const ALLOWED_STATUSES = ["draft", "sent", "accepted", "rejected", "withdrawn"];
+const ALLOWED_STATUSES = ["draft", "sent", "accepted", "rejected", "withdrawn", "converted"];
+
+// Computed server-side (never trusted from the client) so it can't drift from offer_date/
+// offer_validity_days - returned as a plain YYYY-MM-DD string, matching DATEONLY's own format.
+function computeOfferExpiryDate(offerDate, validityDays) {
+  if (!offerDate || !validityDays) return null;
+  const d = new Date(offerDate);
+  d.setDate(d.getDate() + Number(validityDays));
+  return d.toISOString().slice(0, 10);
+}
 
 exports.addData = async function (body) {
   try {
+    body.data.offer_expiry_date = computeOfferExpiryDate(body.data.offer_date, body.data.offer_validity_days);
     const result = await candidates.create(body.data);
     responseCodes.SUCCESS.data = result.id;
     responseCodes.SUCCESS.message = "Candidate Added Successfully";
@@ -25,21 +35,80 @@ exports.addData = async function (body) {
   }
 };
 
+// Archives whatever Offer Letter PDF is currently live for this candidate to a timestamped
+// filename before an edit overwrites the candidate row (and, later, before regeneration would
+// overwrite the PDF itself at its fixed offer_<id>.pdf path) - returns the archived file's URL,
+// or null if no letter had been generated yet.
+function archiveCurrentOfferLetter(candidateId, currentLetterUrl) {
+  if (!currentLetterUrl) return null;
+  const lettersDir = path.join(__dirname, "..", "public", "offer-letters");
+  const currentPath = path.join(__dirname, "..", "public", currentLetterUrl.replace(/^\//, ""));
+  if (!fs.existsSync(currentPath)) return null;
+  const archivedFileName = `offer_${candidateId}_history_${Date.now()}.pdf`;
+  fs.copyFileSync(currentPath, path.join(lettersDir, archivedFileName));
+  return `/offer-letters/${archivedFileName}`;
+}
+
 exports.updateData = async function (body) {
+  const t = await sequelize.transaction();
   try {
-    await candidates.update(body.data, { where: { id: body.id } });
+    const before = await candidates.findByPk(body.id, { transaction: t });
+    // Never trust the client's UI state for this - re-checked server-side too, same as the
+    // Edit/Generate PDF icons being hidden once a candidate is converted to an employee.
+    if (before && before.get("offer_status") === "converted") {
+      await t.rollback();
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "This candidate has already been converted to an employee and can no longer be edited";
+      return responseCodes.BAD_REQUEST;
+    }
+    if (before) {
+      const beforePlain = before.get({ plain: true });
+      await candidateOfferHistory.create(
+        {
+          candidate_id: body.id,
+          old_snapshot: beforePlain,
+          new_snapshot: body.data,
+          old_letter_url: archiveCurrentOfferLetter(body.id, beforePlain.offer_letter_url),
+          modified_by: body.data.modified_by,
+          modified_date: body.data.modified_date,
+        },
+        { transaction: t }
+      );
+    }
+
+    body.data.offer_expiry_date = computeOfferExpiryDate(body.data.offer_date, body.data.offer_validity_days);
+    await candidates.update(body.data, { where: { id: body.id }, transaction: t });
+    await t.commit();
     responseCodes.SUCCESS.data = null;
     responseCodes.SUCCESS.message = "Candidate Updated Successfully";
     return responseCodes.SUCCESS;
   } catch (e) {
+    await t.rollback();
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Update Candidate";
     return responseCodes.BAD_REQUEST;
   }
 };
 
+const DELETE_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 exports.deleteData = async function (body) {
   try {
+    const candidate = await candidates.findByPk(body.id);
+    if (!candidate) {
+      responseCodes.NOT_FOUND.data = null;
+      responseCodes.NOT_FOUND.message = "Candidate record not found";
+      return responseCodes.NOT_FOUND;
+    }
+    // Never trust the client's clock/state for this - re-checked server-side against the
+    // record's own created_date every time, same as any other authorization-style guard.
+    const createdDate = candidate.get("created_date");
+    if (createdDate && Date.now() - new Date(createdDate).getTime() > DELETE_WINDOW_MS) {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "This candidate can no longer be deleted - more than 2 hours have passed since it was added";
+      return responseCodes.BAD_REQUEST;
+    }
+
     await candidates.update(
       { status: 0, deleted_by: body.deleted_by, deleted_date: body.deleted_date },
       { where: { id: body.id } }
@@ -56,6 +125,14 @@ exports.deleteData = async function (body) {
 
 exports.getAllData = async function () {
   try {
+    // Auto-expire: a draft/sent offer whose validity window has passed flips to 'expired' the
+    // next time this list loads - no separate cron job needed.
+    await sequelize.query(
+      `UPDATE candidates
+       SET offer_status = 'expired'
+       WHERE status = 1 AND offer_status IN ('draft', 'sent')
+         AND offer_expiry_date IS NOT NULL AND offer_expiry_date < CURRENT_DATE`
+    );
     const query = `
       SELECT c.*,
              CONCAT(c.first_name, ' ', c.last_name) AS candidate_name,
@@ -73,6 +150,29 @@ exports.getAllData = async function () {
   } catch (e) {
     responseCodes.BAD_REQUEST.data = e;
     responseCodes.BAD_REQUEST.message = "Failed to Load Candidates";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
+exports.getOfferHistory = async function (candidate_id) {
+  try {
+    const query = `
+      SELECT coh.*,
+             CONCAT(um.first_name, ' ', um.middle_name, ' ', um.last_name) AS modified_by_name
+      FROM candidate_offer_history coh
+      LEFT JOIN users_master um ON um.id = coh.modified_by
+      WHERE coh.candidate_id = :candidate_id
+      ORDER BY coh.id DESC`;
+    const data = await sequelize.query(query, {
+      replacements: { candidate_id },
+      type: QueryTypes.SELECT,
+    });
+    responseCodes.SUCCESS.data = data;
+    responseCodes.SUCCESS.message = "";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to Load Offer History";
     return responseCodes.BAD_REQUEST;
   }
 };
@@ -133,17 +233,56 @@ exports.updateStatus = async function (body) {
   }
 };
 
+// Called once the employee that started life as this candidate has actually been saved via
+// Employee Master's Add Profile form (see edit-profile.component.ts) - links the two records and
+// flips offer_status to 'converted' only now, since before this point no employee existed yet.
+exports.linkConvertedEmployee = async function (body) {
+  try {
+    const [affected] = await candidates.update(
+      {
+        offer_status: "converted",
+        converted_user_id: body.converted_user_id,
+        modified_by: body.modified_by,
+        modified_date: body.modified_date,
+      },
+      { where: { id: body.candidate_id, status: 1 } }
+    );
+    if (!affected) {
+      responseCodes.NOT_FOUND.data = null;
+      responseCodes.NOT_FOUND.message = "Candidate not found";
+      return responseCodes.NOT_FOUND;
+    }
+    responseCodes.SUCCESS.data = null;
+    responseCodes.SUCCESS.message = "Candidate marked as converted";
+    return responseCodes.SUCCESS;
+  } catch (e) {
+    responseCodes.BAD_REQUEST.data = e;
+    responseCodes.BAD_REQUEST.message = "Failed to link converted employee to candidate";
+    return responseCodes.BAD_REQUEST;
+  }
+};
+
 async function fetchCandidateForLetter(id) {
   const query = `
     SELECT c.*,
            CONCAT(c.first_name, ' ', c.last_name) AS candidate_name,
            dm.name  AS department_name,
            dm2.designation AS designation_name,
-           CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS reporting_manager_name
+           CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS reporting_manager_name,
+           cbm.client_name AS company_name,
+           cbm.client_logo AS company_logo,
+           olm.full_address AS company_address,
+           city.name        AS company_city,
+           state.name       AS company_state,
+           olm.pincode      AS company_pincode
     FROM candidates c
     LEFT JOIN department_master  dm  ON dm.id  = c.department_id
     LEFT JOIN designation_master dm2 ON dm2.id = c.designation_id
     LEFT JOIN users_master       um  ON um.id  = c.reporting_manager_id
+    LEFT JOIN client_branding_master cbm ON cbm.id = 1
+    LEFT JOIN office_location_master olm ON olm.id = 1
+    LEFT JOIN city_master  city ON city.id  = olm.city_id
+    LEFT JOIN state_master state ON state.id = olm.state_id
     WHERE c.id = :id AND c.status = 1
     LIMIT 1`;
   const rows = await sequelize.query(query, { replacements: { id }, type: QueryTypes.SELECT });
@@ -158,6 +297,13 @@ exports.generateOfferLetter = async function (id) {
       responseCodes.NOT_FOUND.message = "Candidate record not found";
       return responseCodes.NOT_FOUND;
     }
+    // Never trust the client's UI state for this - re-checked server-side too, same as the
+    // Edit/Generate PDF icons being hidden once a candidate is converted to an employee.
+    if (c.offer_status === "converted") {
+      responseCodes.BAD_REQUEST.data = null;
+      responseCodes.BAD_REQUEST.message = "This candidate has already been converted to an employee and the offer letter can no longer be regenerated";
+      return responseCodes.BAD_REQUEST;
+    }
 
     const lettersDir = path.join(__dirname, "..", "public", "offer-letters");
     if (!fs.existsSync(lettersDir)) fs.mkdirSync(lettersDir, { recursive: true });
@@ -166,7 +312,7 @@ exports.generateOfferLetter = async function (id) {
     const filePath = path.join(lettersDir, fileName);
     const letterUrl = `/offer-letters/${fileName}`;
 
-    const fmt = (n) => "Rs. " + (parseFloat(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+    const fmt = (n) => (parseFloat(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
     const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "—");
 
     await new Promise((resolve, reject) => {
@@ -177,26 +323,53 @@ exports.generateOfferLetter = async function (id) {
       const W = doc.page.width - 80;
       const L = 40;
 
-      // ── Header ──────────────────────────────────────────────
+      // ── Header (logo left, company name + address centered - same source as the Salary
+      // Slip: client_branding_master/office_location_master, joined in fetchCandidateForLetter) ──
+      const headerY = 30;
+      if (c.company_logo) {
+        const logoPath = path.join(__dirname, "..", "public", c.company_logo.replace(/^\//, ""));
+        if (fs.existsSync(logoPath)) {
+          try {
+            doc.image(logoPath, L, headerY, { height: 32 });
+          } catch (e) {
+            // Unsupported/corrupt logo file - fall back to text-only header.
+          }
+        }
+      }
       doc.fontSize(18).font("Helvetica-Bold").fillColor("#1a3c5e")
-         .text("ADVANCE CABLE TECHNOLOGIES LIMITED", L, 40, { align: "center", width: W });
+         .text((c.company_name || "ADVANCE CABLE TECHNOLOGIES LIMITED").toUpperCase(), L, headerY + 4, { align: "center", width: W });
       doc.fontSize(10).font("Helvetica").fillColor("#555555")
          .text("Offer Letter", L, doc.y + 2, { align: "center", width: W });
+      const cityStatePin = [c.company_city, c.company_state].filter(Boolean).join(", ")
+        + (c.company_pincode ? ` - ${c.company_pincode}` : "");
+      const companyAddressLine = [c.company_address, cityStatePin].filter(Boolean).join(", ");
+      if (companyAddressLine) {
+        doc.fontSize(8).font("Helvetica").fillColor("#777777")
+           .text(companyAddressLine, L, doc.y + 2, { align: "center", width: W });
+      }
       doc.moveTo(L, doc.y + 8).lineTo(L + W, doc.y + 8).strokeColor("#1a3c5e").lineWidth(1.5).stroke();
 
       // ── Date + Candidate address ─────────────────────────────
+      // Every .text(str, x, y) call below already advances doc.y past the printed line on its
+      // own - each subsequent call just reads doc.y fresh instead of adding its own offset on
+      // top, so gaps don't compound into extra whitespace.
       doc.y += 16;
       doc.fontSize(9).font("Helvetica").fillColor("#333333")
          .text(`Date: ${fmtDate(c.offer_date)}`, L, doc.y);
-      doc.y += 16;
+      if (c.offer_expiry_date) {
+        doc.fillColor("#a32d2d")
+           .text(`This offer is valid until ${fmtDate(c.offer_expiry_date)}.`, L, doc.y);
+        doc.fillColor("#333333");
+      }
+      doc.y += 8;
       doc.font("Helvetica-Bold").text(c.candidate_name, L, doc.y);
-      doc.font("Helvetica").text(c.email, L, doc.y + 12);
-      doc.text(c.mobile, L, doc.y + 24);
-      doc.y += 40;
+      doc.font("Helvetica").text(c.email, L, doc.y);
+      doc.text(c.mobile, L, doc.y);
+      doc.y += 16;
 
       // ── Salutation + body ─────────────────────────────────────
       doc.font("Helvetica-Bold").fontSize(10).text(`Dear ${c.first_name},`, L, doc.y);
-      doc.y += 16;
+      doc.y += 8;
       doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(
         `We are pleased to offer you the position of ${c.designation_name || "—"} in the ${c.department_name || "—"} department at Advance Cable Technologies Limited. Your proposed date of joining is ${fmtDate(c.doj)}. This letter sets out the key terms of employment being offered to you.`,
         L, doc.y, { width: W, align: "justify" }
@@ -207,70 +380,81 @@ exports.generateOfferLetter = async function (id) {
       doc.y += 8;
       const ctcY = doc.y;
       doc.roundedRect(L, ctcY, W, 40, 4).fillAndStroke("#1a7a4c", "#1a7a4c");
-      doc.font("Helvetica-Bold").fontSize(9).fillColor("#ffffff").text("ANNUAL CTC (Cost to Company)", L + 12, ctcY + 8);
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#ffffff").text("TOTAL COST TO COMPANY (Annual)", L + 12, ctcY + 8);
       doc.font("Helvetica-Bold").fontSize(15).fillColor("#ffffff").text(fmt(c.ctc), L + 12, ctcY + 20);
       doc.y = ctcY + 52;
 
-      // ── Salary breakup (monthly) ───────────────────────────────
-      doc.font("Helvetica-Bold").fontSize(10).fillColor("#1a3c5e").text("Monthly Salary Breakup", L, doc.y);
+      // ── Salary breakup (single table: Component | Monthly | Annual) ─
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#1a3c5e").text("Salary Breakup", L, doc.y);
       doc.y += 8;
 
-      const half = W / 2 - 4;
-      const earnX = L, dedX = L + W / 2 + 4;
       const tableTop = doc.y;
+      const componentW = W * 0.5, monthlyW = W * 0.25, annualW = W * 0.25;
+      const monthlyColX = L + componentW, annualColX = L + componentW + monthlyW;
 
-      const earnings = [
-        ["Basic Salary",       c.basic_salary],
-        ["Dearness Allowance", c.dearness_allowance],
+      // Deductions (PF/PT/TDS/ESI/Loan) aren't collected at offer stage - they're finalized later
+      // in Employee Salary Master once the candidate is actually hired - so every row here is an
+      // Earning: its recurring monthly value in the Monthly column, the same component annualized
+      // (x12) in the Annual column. Every Variable Pay - regardless of its own Monthly/Yearly/
+      // Half-Yearly frequency - only ever appears in the Annual column, at its true annual value
+      // (a Yearly/Half-Yearly one already stores that annual total; a Monthly one is x12 here) -
+      // its Monthly cell is left blank. A row is printed only when either column is > 0.
+      const MONTHLY_FIELDS = [
+        ["Basic + DA",         (Number(c.basic_salary) || 0) + (Number(c.dearness_allowance) || 0)],
         ["City Allowance",     c.city_allowance],
         ["HRA",                c.hra],
         ["Conveyance",         c.conveyance],
         ["Medical Allowance",  c.medical_allowance],
         ["LTA",                c.lta],
         ["Special Allowance",  c.special_allowance],
-        ["Bonus",              c.bonus],
-      ];
-      const deductions = [
-        ["PF (Employee)",    c.pf_employee],
-        ["Professional Tax", c.professional_tax],
-        ["Income Tax (TDS)", c.income_tax],
-        ["ESI (Employee)",   c.employee_state_insurance],
-        ["Other Deductions", c.other_deduction],
+        ["Exgratia(As Per Company Policy)",           c.bonus],
+        ["Fuel/Transport Expenses", c.fuel_transport_expenses],
+        ["Medical Insurance",       c.medical_insurance],
+        ["Accidental Insurance",    c.accidental_insurance],
+        ["Uniform",                 c.uniform],
+        ["PF",           c.pf_employer],
+        ["Gratuity",     c.gratuity],
       ];
 
-      const drawTable = (title, rows, xStart, bgHeader) => {
-        doc.rect(xStart, tableTop, half, 20).fill(bgHeader);
-        doc.font("Helvetica-Bold").fontSize(9).fillColor("#ffffff").text(title, xStart + 6, tableTop + 6, { width: half - 6 });
-        let ty = tableTop + 20;
-        rows.forEach(([label, val], idx) => {
-          const rowBg = idx % 2 === 0 ? "#f9fafb" : "#ffffff";
-          doc.rect(xStart, ty, half, 16).fill(rowBg);
-          doc.font("Helvetica").fontSize(8).fillColor("#333333").text(label, xStart + 6, ty + 4, { width: half / 2 - 6 });
-          doc.font("Helvetica").fontSize(8).fillColor("#111111").text(fmt(val), xStart + half / 2, ty + 4, { width: half / 2 - 6, align: "right" });
-          ty += 16;
-        });
-        doc.rect(xStart, tableTop, half, ty - tableTop).strokeColor("#d0dce8").lineWidth(0.5).stroke();
-        return ty;
+      const variablePayRow = (n) => {
+        const amount = Number(c[`variable_pay_${n}`]) || 0;
+        const frequency = c[`variable_pay_${n}_frequency`] || "Monthly";
+        const yearly = frequency === "Monthly" ? amount * 12 : amount;
+        return [`Variable Pay ${n} (${frequency})`, null, yearly];
       };
 
-      const earnEnd = drawTable("EARNINGS (Monthly)", earnings, earnX, "#2e6da4");
-      drawTable("DEDUCTIONS (Monthly)", deductions, dedX, "#c0392b");
-      doc.y = Math.max(earnEnd, tableTop + 20 + deductions.length * 16) + 10;
+      const breakupRows = [
+        ...MONTHLY_FIELDS.map(([label, val]) => {
+          const monthly = Number(val) || 0;
+          return [label, monthly, monthly * 12];
+        }),
+        variablePayRow(1),
+        variablePayRow(2),
+        variablePayRow(3),
+        variablePayRow(4),
+      ].filter(([, monthly, annual]) => (Number(monthly) || 0) > 0 || (Number(annual) || 0) > 0);
 
-      const summaryData = [
-        ["Gross Salary",     c.gross_salary,     "#2e6da4"],
-        ["Total Deductions", c.total_deductions, "#c0392b"],
-        ["Net Salary",       c.net_salary,       "#1a7a4c"],
-      ];
-      const sW = W / 3;
-      const summaryY = doc.y;
-      summaryData.forEach(([label, val, color], i) => {
-        const sx = L + i * sW;
-        doc.roundedRect(sx + 2, summaryY, sW - 6, 40, 4).fillAndStroke(color, color);
-        doc.font("Helvetica-Bold").fontSize(8).fillColor("#ffffff").text(label, sx + 8, summaryY + 6, { width: sW - 14 });
-        doc.font("Helvetica-Bold").fontSize(12).fillColor("#ffffff").text(fmt(val), sx + 8, summaryY + 20, { width: sW - 14 });
+      doc.rect(L, tableTop, W, 20).fill("#1a3c5e");
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#ffffff").text("COMPONENT", L + 6, tableTop + 6, { width: componentW - 6 });
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#ffffff").text("MONTHLY(Rs.)", monthlyColX, tableTop + 6, { width: monthlyW - 6, align: "right" });
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#ffffff").text("ANNUAL(Rs.)", annualColX, tableTop + 6, { width: annualW - 6, align: "right" });
+
+      let ty = tableTop + 20;
+      breakupRows.forEach(([label, monthly, annual], idx) => {
+        const rowBg = idx % 2 === 0 ? "#f9fafb" : "#ffffff";
+        doc.rect(L, ty, W, 16).fill(rowBg);
+        doc.font("Helvetica").fontSize(8).fillColor("#333333").text(label, L + 6, ty + 4, { width: componentW - 6 });
+        doc.font("Helvetica").fontSize(8).fillColor("#111111")
+          .text(monthly != null && monthly > 0 ? fmt(monthly) : "—", monthlyColX, ty + 4, { width: monthlyW - 6, align: "right" });
+        doc.font("Helvetica").fontSize(8).fillColor("#111111").text(fmt(annual), annualColX, ty + 4, { width: annualW - 6, align: "right" });
+        ty += 16;
       });
-      doc.y = summaryY + 52;
+      doc.rect(L, tableTop, W, ty - tableTop).strokeColor("#d0dce8").lineWidth(0.5).stroke();
+      doc.moveTo(monthlyColX, tableTop).lineTo(monthlyColX, ty).strokeColor("#d0dce8").lineWidth(0.5).stroke();
+      doc.moveTo(annualColX, tableTop).lineTo(annualColX, ty).strokeColor("#d0dce8").lineWidth(0.5).stroke();
+      // Gross/Net Salary summary boxes intentionally omitted - Total Cost To Company (above) is
+      // the only cost figure this letter surfaces.
+      doc.y = ty + 10;
 
       // ── Terms & Conditions ───────────────────────────────────
       if (doc.y > doc.page.height - 220) doc.addPage();
@@ -473,12 +657,21 @@ exports.convertToEmployee = async function (body) {
         lta: candidate.lta,
         special_allowance: candidate.special_allowance,
         exgratia: candidate.bonus,
-        pf_employee: candidate.pf_employee,
-        professional_tax: candidate.professional_tax,
-        income_tax: candidate.income_tax,
-        employee_state_insurance: candidate.employee_state_insurance,
-        loan_deduction: candidate.loan_deduction,
-        other_deduction: candidate.other_deduction,
+        variable_pay_1: candidate.variable_pay_1,
+        variable_pay_1_frequency: candidate.variable_pay_1_frequency,
+        variable_pay_2: candidate.variable_pay_2,
+        variable_pay_2_frequency: candidate.variable_pay_2_frequency,
+        variable_pay_3: candidate.variable_pay_3,
+        variable_pay_3_frequency: candidate.variable_pay_3_frequency,
+        variable_pay_4: candidate.variable_pay_4,
+        variable_pay_4_frequency: candidate.variable_pay_4_frequency,
+        fuel_transport_expenses: candidate.fuel_transport_expenses,
+        medical_insurance: candidate.medical_insurance,
+        accidental_insurance: candidate.accidental_insurance,
+        uniform: candidate.uniform,
+        // PF (Employee)/Professional Tax/Income Tax/ESI (Employee)/Loan/Other Deduction aren't
+        // collected at offer stage anymore - left at their model defaults (0) here; HR sets them
+        // for real in Employee Salary Master once the candidate is actually hired.
         pf_employer: candidate.pf_employer,
         esi_employer: candidate.esi_employer,
         gratuity: candidate.gratuity,

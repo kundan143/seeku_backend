@@ -414,18 +414,61 @@ function clampRatio(paidDays, workingDays) {
   return workingDays > 0 ? Math.max(0, Math.min(1, paidDays / workingDays)) : 1;
 }
 const EARNING_KEYS = ['basic_salary','dearness_allowance','city_allowance','hra','conveyance','medical_allowance','travel_allowance','special_allowance','exgratia'];
+const VARIABLE_PAY_NUMBERS = [1, 2, 3, 4];
+
+// A Yearly Variable Pay pays out once, in its configured disbursement month; a Half-Yearly one
+// pays out twice - that month and again 6 months later (wrapped into 1-12), derived rather than
+// stored separately. Returns [] for Monthly (handled as a normal prorated earning instead) or an
+// unconfigured disbursement month.
+function variablePayMonths(frequency, disbursementMonth) {
+  const dm = Number(disbursementMonth);
+  if (!dm || dm < 1 || dm > 12) return [];
+  if (frequency === 'Yearly') return [dm];
+  if (frequency === 'Half-Yearly') return [dm, ((dm + 6 - 1) % 12) + 1];
+  return [];
+}
+
+// The stored variable_pay_N figure means something different depending on frequency:
+//   Monthly     - a monthly amount, prorated into every month's gross like any other earning.
+//   Yearly      - the ANNUAL total, paid out in FULL, unprorated, once in its disbursement month.
+//   Half-Yearly - also the ANNUAL total, but split into two equal installments (amount / 2), paid
+//                 unprorated in the disbursement month and again 6 months later - so the employee
+//                 still receives exactly the entered annual figure across the year, just in 2 parts.
+// Zero in every non-disbursement month for Yearly/Half-Yearly.
+function computeVariablePay(master, ratio, paymentMonth) {
+  const fields = {};
+  let total = 0;
+  VARIABLE_PAY_NUMBERS.forEach(n => {
+    const key = `variable_pay_${n}`;
+    const frequency = master[`${key}_frequency`] || 'Monthly';
+    const amount = Number(master[key]) || 0;
+    let value;
+    if (frequency === 'Monthly') {
+      value = round2(amount * ratio);
+    } else {
+      const months = variablePayMonths(frequency, master[`${key}_disbursement_month`]);
+      const perOccurrence = frequency === 'Half-Yearly' ? amount / 2 : amount;
+      value = months.includes(Number(paymentMonth)) ? round2(perOccurrence) : 0;
+    }
+    fields[key] = value;
+    total += value;
+  });
+  return { fields, total: round2(total) };
+}
+
 // Prorates each earning line by ratio and sums the already-rounded lines for gross_salary,
 // so an itemized earnings table always adds up exactly to the printed Gross Salary.
-// When exgratiaOverride is given (an incentive was disbursed this month), it replaces the
-// master's configured exgratia entirely and is paid in full, unprorated by attendance.
-function prorateEarnings(master, ratio, exgratiaOverride) {
+function prorateEarnings(master, ratio, paymentMonth) {
   const fields = {};
   let gross = 0;
   EARNING_KEYS.forEach(k => {
-    const v = (k === 'exgratia' && exgratiaOverride != null) ? round2(Number(exgratiaOverride)) : round2(Number(master[k]) * ratio);
+    const v = round2(Number(master[k]) * ratio);
     fields[k] = v;
     gross += v;
   });
+  const variablePay = computeVariablePay(master, ratio, paymentMonth);
+  Object.assign(fields, variablePay.fields);
+  gross += variablePay.total;
   return { fields, gross_salary: round2(gross) };
 }
 
@@ -474,7 +517,12 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       SELECT usd.id AS salary_detail_id, usd.user_id, CONCAT(um.first_name, ' ',um.middle_name, ' ',um.last_name) AS emp_name,
       um.dob,
       dm.name AS department_name, dm2.designation AS designation_name, usd.basic_salary, usd.dearness_allowance,
-      usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.exgratia, usd.pf_employee,
+      usd.city_allowance, usd.hra, usd.conveyance, usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.exgratia,
+      usd.variable_pay_1, usd.variable_pay_1_frequency, usd.variable_pay_1_disbursement_month,
+      usd.variable_pay_2, usd.variable_pay_2_frequency, usd.variable_pay_2_disbursement_month,
+      usd.variable_pay_3, usd.variable_pay_3_frequency, usd.variable_pay_3_disbursement_month,
+      usd.variable_pay_4, usd.variable_pay_4_frequency, usd.variable_pay_4_disbursement_month,
+      usd.pf_employee,
       usd.professional_tax, usd.income_tax, usd.employee_state_insurance, usd.other_deduction, usd.pf_employer, usd.net_salary,
       usd.esi_employer, usd.gratuity, usd.gross_salary, usd.total_deductions,
       COALESCE((
@@ -486,7 +534,7 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
           WHEN sp.id IS NOT NULL THEN TRUE
           ELSE FALSE
         END AS already_processed,
-        sp.id AS existing_payment_id, eid.amount AS incentive_amount,
+        sp.id AS existing_payment_id,
         -- Aggregated (not a plain JOIN) so an employee with more than one increment scheduled
         -- into this same disbursement month still returns exactly one row here, combining every
         -- pending increment's arrears into a single total instead of duplicating the employee.
@@ -511,7 +559,6 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       LEFT JOIN salary_payments sp ON sp.salary_detail_id = usd.id
       AND sp.payment_month = :payment_month AND sp.payment_year = :payment_year
       AND sp.status = 1
-      LEFT JOIN employee_incentive_details eid ON eid.employee_id = um.id and eid.disbursed_month_id = :payment_month and eid.status = 1
       WHERE usd.status = 1 AND um.status = TRUE
       ORDER BY dm.name, emp_name`;
     const [employees, monthInfo] = await Promise.all([
@@ -528,7 +575,7 @@ exports.previewBulkPayroll = async function (payment_month, payment_year) {
       const leave = emp.user_id ? leaveMap[emp.user_id] : null;
       const att = computeAttendance(monthInfo.working_days, leave, 0);
       const ratio = clampRatio(att.paid_days, monthInfo.working_days);
-      const { fields, gross_salary } = prorateEarnings(emp, ratio, emp.incentive_amount);
+      const { fields, gross_salary } = prorateEarnings(emp, ratio, payment_month);
 
       // Recompute Professional Tax fresh (gross threshold + age>60 waiver) against the ACTUAL
       // gross paid this month (gross_salary, after LOP/attendance proration) - corrected in
@@ -642,7 +689,12 @@ exports.processBulkPayroll = async function (body) {
     const masterRows = salaryDetailIds.length
       ? await sequelize.query(
           `SELECT usd.id, usd.basic_salary, usd.dearness_allowance, usd.city_allowance, usd.hra, usd.conveyance,
-                  usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.exgratia, usd.total_deductions,
+                  usd.medical_allowance, usd.travel_allowance, usd.special_allowance, usd.exgratia,
+                  usd.variable_pay_1, usd.variable_pay_1_frequency, usd.variable_pay_1_disbursement_month,
+                  usd.variable_pay_2, usd.variable_pay_2_frequency, usd.variable_pay_2_disbursement_month,
+                  usd.variable_pay_3, usd.variable_pay_3_frequency, usd.variable_pay_3_disbursement_month,
+                  usd.variable_pay_4, usd.variable_pay_4_frequency, usd.variable_pay_4_disbursement_month,
+                  usd.total_deductions,
                   usd.pf_employee, usd.professional_tax, usd.income_tax, usd.employee_state_insurance,
                   usd.loan_deduction, usd.other_deduction, usd.pf_employer, usd.esi_employer, usd.gratuity,
                   um.dob,
@@ -651,7 +703,6 @@ exports.processBulkPayroll = async function (body) {
                     FROM loan_advance_request lar
                     WHERE lar.employee_id = usd.user_id AND lar.status = 1 AND (lar.amount - lar.total_paid) > 0
                   ), 0) AS monthly_deduction_amount,
-                  eid.amount AS incentive_amount,
                   -- Aggregated (not a plain JOIN) so an employee with more than one increment
                   -- scheduled into this same disbursement month is still one row here, combining
                   -- every pending increment's arrears instead of duplicating this master row.
@@ -671,8 +722,6 @@ exports.processBulkPayroll = async function (body) {
                   ) AS increment_ids
            FROM users_salary_details usd
            LEFT JOIN users_master um ON um.id = usd.user_id
-           LEFT JOIN employee_incentive_details eid ON eid.employee_id = usd.user_id
-             AND eid.disbursed_month_id = :payment_month AND eid.status = 1
            WHERE usd.id IN (:ids)`,
           { replacements: { ids: salaryDetailIds, payment_month, payment_year }, type: QueryTypes.SELECT, transaction: t }
         )
@@ -697,7 +746,7 @@ exports.processBulkPayroll = async function (body) {
       // recompute it against.
       const lwfAmount = round2(emp.lwf_amount);
       if (master) {
-        const prorated = prorateEarnings(master, ratio, master.incentive_amount);
+        const prorated = prorateEarnings(master, ratio, payment_month);
         earningFields = prorated.fields;
         gross_salary  = prorated.gross_salary;
         // Active, unsettled loan/advance requests add their monthly installment on

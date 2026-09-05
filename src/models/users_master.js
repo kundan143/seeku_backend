@@ -222,6 +222,15 @@ let columns = {
         allowNull: false,
         defaultValue: false,
     },
+    credentials_mail_status: {
+        type: DataTypes.SMALLINT,
+        allowNull: false,
+        defaultValue: 0,
+    },
+    credentials_mail_sent_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+    },
 };
 let optional = {
     sequelize,

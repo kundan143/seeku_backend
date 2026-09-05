@@ -53,4 +53,15 @@ router.post('/convertToEmployee', async (req, res, next) => {
     return res.send(await OP_Candidates.convertToEmployee(req.body));
 });
 
+// 11 = Get Offer Revision History for one candidate
+router.post('/getOfferHistory', async (req, res, next) => {
+    return res.send(await OP_Candidates.getOfferHistory(req.body.candidate_id));
+});
+
+// 12 = Link a just-created employee back to the candidate they were converted from, and flip
+// offer_status to 'converted' (see edit-profile.component.ts's afterResponse)
+router.post('/linkConvertedEmployee', async (req, res, next) => {
+    return res.send(await OP_Candidates.linkConvertedEmployee(req.body));
+});
+
 module.exports = router;

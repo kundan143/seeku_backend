@@ -55,6 +55,14 @@ module.exports = function (sequelize, DataTypes) {
             type: DataTypes.DATEONLY,
             allowNull: true
         },
+        offer_validity_days: {
+            type: DataTypes.SMALLINT,
+            allowNull: true
+        },
+        offer_expiry_date: {
+            type: DataTypes.DATEONLY,
+            allowNull: true
+        },
         basic_salary: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true,
@@ -96,6 +104,66 @@ module.exports = function (sequelize, DataTypes) {
             defaultValue: 0.00
         },
         bonus: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        variable_pay_1: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        variable_pay_1_frequency: {
+            type: DataTypes.STRING(20),
+            allowNull: true,
+            defaultValue: 'Monthly'
+        },
+        variable_pay_2: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        variable_pay_2_frequency: {
+            type: DataTypes.STRING(20),
+            allowNull: true,
+            defaultValue: 'Monthly'
+        },
+        variable_pay_3: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        variable_pay_3_frequency: {
+            type: DataTypes.STRING(20),
+            allowNull: true,
+            defaultValue: 'Monthly'
+        },
+        variable_pay_4: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        variable_pay_4_frequency: {
+            type: DataTypes.STRING(20),
+            allowNull: true,
+            defaultValue: 'Monthly'
+        },
+        fuel_transport_expenses: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        medical_insurance: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        accidental_insurance: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: true,
+            defaultValue: 0.00
+        },
+        uniform: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true,
             defaultValue: 0.00
